@@ -1,0 +1,182 @@
+---
+output:
+  html_document: default
+  word_document: default
+---
+```{r load libraries}
+
+#install.packages('gdata')
+#library("gdata")
+library("dplyr")
+library("tidyr")
+library("mice")
+library("VIM")
+library("Hmisc")
+library("lubridate")
+library(corrplot)
+library(reshape2)
+library(caret)
+library(AppliedPredictiveModeling)
+library(e1071)
+library(cluster)
+library(lubridate)
+library(readxl)
+
+
+df<- read_excel("F:/HW 2/StudentData.xlsx")
+head(df)
+tail(df)
+
+```
+
+```{r explore data}
+
+#Explore the data
+str(df)
+summary(df)
+describe(df) #Need to consider what to do with zero values: Brand Code of zero for example
+
+#df_zero<-df[df$Brand.Code=='0',]
+#head(df)
+#tail(df)
+
+#Explore the data, identify NAs
+summary(df) 
+md.pattern(df)
+mice_plot <- aggr(df, col=c('green','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels=names(df), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"))
+#No missing elements
+
+```
+
+
+```{r review Correlations}
+
+#Review the correlations
+
+
+df_cor <- df
+df_cor$Brand.Code <- NULL #Need to remove because a categorical variable
+df_cor$PH <- NULL #Need to remove because our dependent variable
+df_cor <- df_cor[complete.cases(df_cor),] 
+correlations <- cor(df_cor)
+#corrplot(correlations, order = "hclust")
+
+class(correlations)
+corr_mat=cor(correlations,method="p")
+corr_mat[1:33,1:33]
+library(corrplot)
+corrplot(corr_mat)
+
+#corrplot(correlations, order="hclust")
+#corrplot(correlations, method="square")
+
+#Identify high correlations
+
+threshold <- 0.8
+tooHigh <- findCorrelation(correlations, cutoff = threshold, names = TRUE, verbose = TRUE) 
+tooHigh
+# a few correlations that we shall consider removing those columns
+
+#Take a look at distributions to identify outliers
+```
+
+```{r Plots}
+# plot histograms of data
+#ggplot(df,aes(x = EUI_per_zcta)) +
+ # geom_histogram(df)
+
+
+#ggplot(data = df, aes(x = x,y = y), inherit.aes = FALSE )
+
+# boxplots and histograms to check distributions
+#install.packages("reshape"); library(reshape)
+#d <- melt(correlations)
+
+#ggplot(d,aes(x = value)) + 
+#  facet_wrap(~variable,scales = "free_x") + 
+#  geom_histogram()
+
+#ggplot(d, aes(x=variable, y=value)) +
+#  facet_wrap(~variable,scales = "free") +
+ # geom_boxplot() +
+ # ggtitle("Boxplots")
+#All the more reason to consider doing something with the zeros...
+
+```
+## I get this error when I try to run the plots.
+
+##Error in combine_vars(data, params$plot_env, vars, drop = params$drop) : 
+## At least one layer must contain all variables used for facetting
+```{r}
+
+#Check for skewness
+skewValues <- apply(df_cor, 2, skewness) 
+View(skewValues) #quite a lot of high, negative values likely due to the zeros
+```
+##SOME MODELS I AM RECOMMENDING
+
+# USED THIS CODE FOR HW 8.7
+
+#___RPART___
+set.seed(614) 
+myGrid1 <- expand.grid(maxdepth= seq(1,10,by=1)) 
+myTune1 <- train(x = ppTraininPredictors, y = trainYield, 
+                       method = "rpart2", 
+                       metric = "Rsquared", 
+                       tuneGrid = myGrid1, 
+                       trControl = control)
+
+myTune1
+plot(myTune1)
+#======================
+
+#___Rf___
+library(mlbench)
+library(caret)
+set.seed(614) 
+myGrid2 <- expand.grid(mtry=seq(2,38,by=3))
+
+myTune2 <- train(x = ppTraininPredictors, y = trainYield, 
+                       method = "rf", 
+                       tuneGrid = myGrid2,
+                       metric = "Rsquared", 
+                       importance = TRUE, 
+                       trControl = control)
+myTune2
+plot(myTune2)
+#======================
+
+#___gmb___
+set.seed(0) 
+myGrid3<- expand.grid(.interaction.depth= seq(1,7,by=2), 
+                      # n.trees=c(25,50,100,200), 
+                      .n.trees = seq( 100, 1000, by=100 ),
+                       #shrinkage=c(0.01,0.05,0.1,0.2)
+                      .shrinkage=c(0.01,0.1))
+
+myTune3 <- train(x = ppTraininPredictors, y = trainYield, 
+                     method = "gbm", 
+                     #metric = "Rsquared", 
+                     verbose = FALSE) 
+                     #tuneGrid =myGrid3,
+                    # .n.minobsinnode = c(10)) 
+                     #trControl = control)
+myTune3
+plot(myTune3)
+#======================
+
+#___cubist___
+set.seed(614) 
+myGrid4 <- expand.grid(committees = c(1, 5, 10, 20, 50, 100), 
+                          neighbors = c(0, 1, 3, 5, 7)) 
+myTune4  <- train(x = ppTraininPredictors, y = trainYield, 
+                        method = "cubist", 
+                        verbose = FALSE, 
+                        metric = "Rsquared", 
+                        tuneGrid = myGrid4, 
+                        trControl = control)
+myTune4 
+plot(myTune4)
