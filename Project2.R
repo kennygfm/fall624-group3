@@ -165,6 +165,7 @@ ggplot(d,aes(x = value)) +
   facet_wrap(~variable,scales = "free_x") + 
   geom_histogram()
 # Zero values for some variables still need to be considered: Mnf.Flow, Hyd.Pressure1 &2
+#beyond that we do not appear to have significant outliers
 
 ggplot(d, aes(x=variable, y=value)) +
   facet_wrap(~variable,scales = "free") +
@@ -175,3 +176,103 @@ ggplot(d, aes(x=variable, y=value)) +
 #Check for skewness
 skewValues <- apply(df_cor, 2, skewness) 
 View(skewValues) #quite a lot of high, negative values likely due to the zeros
+
+#Load evaluation data
+df_test = read.csv(file = "C:\\Users\\Ken Markus\\Downloads\\StudentEvaluation.csv",
+              na.strings = c("", " "),
+              header = TRUE)
+#clean-up the test data
+df_test <- rename(df_test, Brand.Code=ï..Brand.Code)
+df_test$PH <- NULL #column is all null values
+
+#remove same columns with the correlations
+df_test$Balling <- NULL
+df_test$Hyd.Pressure3 <- NULL
+df_test$Alch.Rel <- NULL
+df_test$Balling.Lvl <- NULL
+df_test$Density <- NULL
+df_test$Density <- NULL
+df_test$Carb.Volume <- NULL
+df_test$Bowl.Setpoint <- NULL
+df_test$Filler.Speed <- NULL
+
+##Nonlinear Regression Model(s)
+#define training data
+bc <- df$Brand.Code
+trainingData_x <- cbind(df_cor, bc)
+trainingData_x <- rename(trainingData_x, Brand.Code=bc)
+trainingData_y <- df$PH #Not really necessary, but makes code easier to read
+
+#MARS
+library(earth)
+marsFit <- earth(x = trainingData_x, y = trainingData_y)
+marsFit
+summary(marsFit) #RSq = 0.4738075
+plotmo(marsFit)
+
+marsPred <- predict(marsFit, newdata = df_test)
+#postResample(pred = marsPred, obs = testData$y)
+
+#Now let's do NN
+library(nnet)
+nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),
+                        .size = c(1:10),
+                        .bag = FALSE)
+set.seed(100)
+nnetTune <- train(x = trainingData_x, y = trainingData_y,
+                  method = "avNNet",
+                  tuneGrid = nnetGrid,
+                  preProc = c("center", "scale"),
+                  linout = TRUE,
+                  trace = FALSE,
+                  maxit = 500)
+nnetTune #best Rsqaured is 0.5328831
+summary(nnetTune)
+nnetPred <- predict(nnetTune, newdata = df_test)
+#postResample(pred = nnetPred, obs = testData$y) 
+
+
+#Now let's do SVM
+library(kernlab)
+
+#Note that we have to convert Brand.Code to numeric or remove...
+bc <- as.character(bc)
+bc[bc=='A'] <-1
+bc[bc=='B'] <-2
+bc[bc=='C'] <-3
+bc[bc=='D'] <-4
+bc <- as.numeric(bc)
+
+#some updates to the training data pre the changes
+trainingData_x <- cbind(df_cor, bc)
+trainingData_x <- rename(trainingData_x, Brand.Code=bc)
+
+svmTune <- train(x = trainingData_x, y = trainingData_y,
+                 method = "svmLinear", #for homework play with various values, svmRadial, svmPoly (takes the longest time), svmLinear
+                 tuneLength = 14,
+                 preProc = c("center", "scale"),
+                 trControl = trainControl(method = "cv"))
+svmTune #Rsquared is 0.3210737
+summary(svmTune)
+
+#test data BrandCode needs to be updated too
+df_test$Brand.Code <- as.character(df_test$Brand.Code)
+df_test$Brand.Code[df_test$Brand.Code=='A'] <-1
+df_test$Brand.Code[df_test$Brand.Code=='B'] <-2
+df_test$Brand.Code[df_test$Brand.Code=='C'] <-3
+df_test$Brand.Code[df_test$Brand.Code=='D'] <-4
+df_test$Brand.Code <- as.numeric(df_test$Brand.Code)
+
+svmPred <- predict(svmTune, newdata = df_test)
+#postResample(pred = svmPred, obs = testData$y) #SVM(radial) is very poor, may try other kernels
+
+
+
+#KNN - NOT WORKING YET...
+library(caret)
+knnModel <- train(x = trainingData_x, y = trainingData_y, method = "knn",
+                  preProc = c("center", "scale"),
+                  tuneLength = 10)
+knnModel #max(knnModel$results$Rsquared) 0.2349691
+knnPred <- predict(knnModel, newdata = df_test) #NAs need to be removed
+postResample(pred = knnPred, obs = testData$y)
