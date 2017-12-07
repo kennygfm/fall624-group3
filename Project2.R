@@ -1,4 +1,3 @@
-library(plyr) # need to load for bagged tree; load before dplyr to not mask
 library("dplyr")
 library("tidyr")
 library("mice")
@@ -10,17 +9,11 @@ library(reshape2)
 library(caret)
 library(AppliedPredictiveModeling)
 library(e1071)
-library(rpart)
-library(RWeka)
-library(ipred)
-library(randomForest)
-library(gbm)
-library(Cubist)
 
-# data import, exploration, cleanup, & imputation ####
-df <- read.csv(file = "StudentData.csv",
-               na.strings = c("", " "),
-               header = TRUE)
+
+df = read.csv(file = "C:\\Users\\Ken Markus\\Downloads\\StudentData.csv",
+              na.strings = c("", " "),
+              header = TRUE)
 
 
 #Explore the data
@@ -185,9 +178,9 @@ skewValues <- apply(df_cor, 2, skewness)
 View(skewValues) #quite a lot of high, negative values likely due to the zeros
 
 #Load evaluation data
-df_test <- read.csv(file = "StudentEvaluation.csv",
-                    na.strings = c("", " "),
-                    header = TRUE)
+df_test = read.csv(file = "C:\\Users\\Ken Markus\\Downloads\\StudentEvaluation.csv",
+              na.strings = c("", " "),
+              header = TRUE)
 #clean-up the test data
 df_test <- rename(df_test, Brand.Code=ï..Brand.Code)
 df_test$PH <- NULL #column is all null values
@@ -210,8 +203,11 @@ trainingData_x <- cbind(df_cor, bc)
 trainingData_x <- rename(trainingData_x, Brand.Code=bc)
 trainingData_y <- df$PH #Not really necessary, but makes code easier to read
 
+testData_x <- trainingData_x[2001:2251,]
+trainingData_x <- trainingData_x[1:2000,]
 
-# non-linear models ####
+testData_y <- trainingData_y[2001:2251]
+trainingData_y <- trainingData_y[1:2000]
 
 #MARS
 library(earth)
@@ -220,8 +216,8 @@ marsFit
 summary(marsFit) #RSq = 0.4738075
 plotmo(marsFit)
 
-marsPred <- predict(marsFit, newdata = df_test)
-marsPerf <- postResample(pred = marsPred, obs = testData$y)
+marsPred <- predict(marsFit, newdata = testData_x)
+postResample(pred = marsPred, obs = testData_y)
 
 #Now let's do NN
 library(nnet)
@@ -235,11 +231,11 @@ nnetTune <- train(x = trainingData_x, y = trainingData_y,
                   preProc = c("center", "scale"),
                   linout = TRUE,
                   trace = FALSE,
-                  maxit = 500)
+                  maxit = 50)
 nnetTune #best Rsqaured is 0.5328831
 summary(nnetTune)
-nnetPred <- predict(nnetTune, newdata = df_test)
-nnetPerf <- postResample(pred = nnetPred, obs = testData$y) 
+nnetPred <- predict(nnetTune, newdata = testData_x)
+postResample(pred = nnetPred, obs = testData_y) 
 
 
 #Now let's do SVM
@@ -256,6 +252,8 @@ bc <- as.numeric(bc)
 #some updates to the training data pre the changes
 trainingData_x <- cbind(df_cor, bc)
 trainingData_x <- rename(trainingData_x, Brand.Code=bc)
+testData_x <- trainingData_x[2001:2251,]
+trainingData_x <- trainingData_x[1:2000,]
 
 svmTune <- train(x = trainingData_x, y = trainingData_y,
                  method = "svmLinear", #for homework play with various values, svmRadial, svmPoly (takes the longest time), svmLinear
@@ -273,96 +271,16 @@ df_test$Brand.Code[df_test$Brand.Code=='C'] <-3
 df_test$Brand.Code[df_test$Brand.Code=='D'] <-4
 df_test$Brand.Code <- as.numeric(df_test$Brand.Code)
 
-svmPred <- predict(svmTune, newdata = df_test)
-svmPerf <- postResample(pred = svmPred, obs = testData$y) #SVM(radial) is very poor, may try other kernels
+svmPred <- predict(svmTune, newdata = trainingData_x)
+postResample(pred = svmPred, obs = testData_y) #SVM(radial) is very poor, may try other kernels
 
 
 
 #KNN - NOT WORKING YET...
-knnTune <- train(x = trainingData_x, y = trainingData_y, method = "knn",
+library(caret)
+knnModel <- train(x = trainingData_x, y = trainingData_y, method = "knn",
                   preProc = c("center", "scale"),
                   tuneLength = 10)
-knnTune #max(knnModel$results$Rsquared) 0.2349691
-knnPred <- predict(knnTune, newdata = df_test) #NAs need to be removed
-knnPerf <- postResample(pred = knnPred, obs = testData$y)
-
-
-# regression tree models ####
-# convert training data from matrix to numeric
-nomatrix <- trainingData_x %>% 
-  mutate_if(is.matrix, as.numeric)
-
-# conventional tree of max depth
-set.seed(100)
-rpartTune <- train(x = trainingData_x, y = trainingData_y,
-                   method = "rpart2",
-                   preProc = c("center", "scale"),
-                   metric = "Rsquared")
-rpartPred <- predict(rpartTune, newdata = df_test)
-rpartPerf <- postResample(pred = rpartPred, obs = testData$y)
-
-# rule-based model
-set.seed(100)
-ruleTune <- train(x = trainingData_x, y = trainingData_y,
-                  method = "M5Rules",
-                  preProc = c("center", "scale"))
-rulePred <- predict(ruleTune, newdata = df_test)
-rulePerf <- postResample(pred = rulePred, obs = testData$y)
-
-
-# bagged tree model
-set.seed(100)
-bagTune <- train(x = trainingData_x, y = trainingData_y,
-                 method = "treebag",
-                 preProc = c("center", "scale"))
-bagPred <- predict(bagTune, newdata = df_test)
-bagPerf <- postResample(pred = bagPred, obs = testData$y)
-
-
-# random forest model
-set.seed(100)
-rfTune <- train(x = trainingData_x, y = trainingData_y,
-                method = "rf",
-                preProc = c("center", "scale"),
-                ntrees = 1000, importance = TRUE)
-rfPred <- predict(rfTune, newdata = df_test)
-rfPerf <- postResample(pred = rfPred, obs = testData$y)
-
-
-# boosted tree model
-set.seed(100)
-boostTune <- train(x = trainingData_x, y = trainingData_y,
-                   method = "gbm",
-                   tuneGrid = expand.grid(shrinkage = c(0.01, 0.05, 0.1),
-                                          interaction.depth = seq(1, 9, 2),
-                                          n.trees = seq(100, 1000, 100),
-                                          n.minobsinnode = 10),
-                   verbose = FALSE)
-boostPred <- predict(boostTune, newdata = df_test)
-boostPerf <- postResample(pred = boostPred, obs = testData$y)
-
-
-# cubist model (takes a long time)
-set.seed(100)
-cubistTune <- train(x = trainingData_x, y = trainingData_y,
-                    method = "cubist",
-                    tuneGrid = expand.grid(neighbors = c(0, 1, 5, 9),
-                                           committees = c(1, 25, 50, 75, 100)))
-cubistPred <- predict(cubistTune, newdata = df_test)
-cubistPerf <- postResample(pred = cubistPred, obs = testData$y)
-
-
-# model comparision ####
-# create function to compare model performance
-model_perf <- function (model_set, metric) {
-  mdl_names <- character()
-  resampled <- numeric()
-  test <- numeric()
-  for (mdl in model_set) {
-    mdl_names <- c(mdl_names, mdl)
-    resampled <- c(resampled, min(get(paste0(mdl, "Tune"))$results[[metric]]))
-    test <- c(test, get(paste0(mdl, "perf"))[metric])
-  }
-  pander(data.frame(`Resampled RMSE` = resampled, `Test RMSE` = test,
-                    row.names = mdl_names, check.names = FALSE), digits = 4)
-}
+knnModel #max(knnModel$results$Rsquared) 0.2349691
+knnPred <- predict(knnModel, newdata = trainingData_x) #NAs need to be removed
+postResample(pred = knnPred, obs = testData_y)
