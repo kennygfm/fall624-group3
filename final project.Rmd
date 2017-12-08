@@ -1,0 +1,302 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r load libraries}
+
+#install.packages('gdata')
+#library("gdata")
+library("dplyr")
+library("tidyr")
+library("mice")
+library("VIM")
+library("Hmisc")
+library("lubridate")
+library(corrplot)
+library(reshape2)
+library(caret)
+library(AppliedPredictiveModeling)
+library(e1071)
+library(cluster)
+library(lubridate)
+library(readxl)
+library(psych) 
+library(mice)
+library(MASS)
+library(reshape2)
+library(VIM)
+
+
+df = read.csv(file = "F:/HW 2/StudentData.csv", 
+                      na.strings = c("", " "), 
+                      header = TRUE) 
+head(df)
+tail(df)
+
+```
+
+```{r explore data}
+#Explore the data
+
+str(df)
+summary(df)
+describe(df) #Need to consider what to do with zero values: Brand Code of zero for example
+md.pattern(df)
+
+aggr_plot <- aggr(df, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(data), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+#No missing elements
+#https://davetang.org/muse/2013/05/22/using-aggregate-and-apply-in-r/
+#https://www.r-bloggers.com/imputing-missing-data-with-r-mice-package/
+```
+
+
+```{r review Correlations}
+
+#Review the correlations
+df_cor <- df
+df_cor$Brand.Code <- NULL #Need to remove because a categorical variable
+df_cor$PH <- NULL #Need to remove because our dependent variable
+df_cor <- df_cor[complete.cases(df_cor),] 
+correlations <- cor(df_cor)
+#corrplot(correlations, order = "hclust")
+
+class(correlations)
+corr_mat=cor(correlations,method="p")
+#corr_mat[1:35,1:35]
+
+#corrplot(correlations, order="hclust")
+#corrplot(correlations, method="square")
+
+#Identify high correlations
+
+#threshold <- 0.8
+#tooHigh <- findCorrelation(correlations, cutoff = threshold, names = TRUE, verbose = TRUE) 
+#tooHigh
+# a few correlations that we shall consider removing those columns
+
+#Take a look at distributions to identify outliers
+```
+#Explore the distributions of the remaining columns with fairly significant NAs to determine appropriate
+#imputations
+```{r}
+df = read.csv(file = "F:/HW 2/StudentData.csv", 
+                      na.strings = c("", " "), 
+                      header = TRUE) 
+library(Hmisc)
+head(df)
+summary(df)
+summary(df$PSC.CO2)
+hist(df$PSC.CO2) #left skewed
+
+df$PSC.CO2 <- impute(as.matrix(df$PSC.CO2), "median")
+table(df$PSC.CO2)
+hist(df$PC.Volume) #Fairly normal distribution so mean should suffice
+df$PC.Volume <- impute(as.matrix(df$PC.Volume), "mean")
+
+hist(df$Fill.Ounces) #Normal, leverage the mean
+df$Fill.Ounces <- impute(as.matrix(df$Fill.Ounces), "mean")
+
+hist(df$PSC) #left skewed, so opt for the median
+df$PSC <- impute(as.matrix(df$PSC), "median")
+
+hist(df$Carb.Temp) #Normal, leverage the mean
+df$Carb.Temp <- impute(as.matrix(df$Carb.Temp), "median")
+
+hist(df$Carb.Pressure) #normal
+df$Carb.Pressure <- impute(as.matrix(df$Carb.Pressure), "mean")
+
+hist(df$Hyd.Pressure2) #a lot of zero values which seem problematic - use median, may be smarter to remove the 14 rows
+df$Hyd.Pressure2 <- impute(as.matrix(df$Hyd.Pressure2), "median")
+
+hist(df$Hyd.Pressure1) #also a lot of zero values
+df$Hyd.Pressure1 <- impute(as.matrix(df$Hyd.Pressure1), "median")
+
+hist(df$Fill.Pressure) #right skewed
+df$Fill.Pressure <- impute(as.matrix(df$Fill.Pressure), "median")
+
+hist(df$Filler.Level) #right skewed
+df$Filler.Level <- impute(as.matrix(df$Filler.Level), "median")
+
+hist(df$Filler.Speed) #far right skewed, may be wiser to simply remove rows, 3
+df$Filler.Speed <- impute(as.matrix(df$Filler.Speed), "median")
+
+#hist(df$Carb.Pressure) #normal
+#df$Carb.Pressure <- impute(as.matrix(df$Carb.Pressure), "mean")
+
+hist(df$Hyd.Pressure3) #a low of zeros and then right skewed
+df$Hyd.Pressure3 <- impute(as.matrix(df$Hyd.Pressure3), "median")
+
+hist(df$Hyd.Pressure4) #normal
+df$Hyd.Pressure4 <- impute(as.matrix(df$Hyd.Pressure4), "mean")
+
+hist(df$Alch.Rel) #odd distribution - median best, but may prefer to remove rows
+df$Alch.Rel <- impute(as.matrix(df$Alch.Rel), "median")
+
+hist(df$Carb.Flow) #odd distribution - median best, but may prefer to remove rows
+df$Carb.Flow <- impute(as.matrix(df$Carb.Flow), "median")
+
+hist(df$Oxygen.Filler) #left skewed
+df$Oxygen.Filler <- impute(as.matrix(df$Oxygen.Filler), "median")
+
+hist(df$Carb.Pressure1) #right skewed
+df$Carb.Pressure1 <- impute(as.matrix(df$Carb.Pressure1), "median")
+
+hist(df$Carb.Volume) #left skewed
+df$Carb.Volume <- impute(as.matrix(df$Carb.Volume), "median")
+
+hist(df$Usage.cont) #use median
+df$Usage.cont <- impute(as.matrix(df$Usage.cont), "median")
+
+hist(df$Bowl.Setpoint) #use median
+df$Bowl.Setpoint <- impute(as.matrix(df$Bowl.Setpoint), "median")
+
+hist(df$PSC.Fill)
+df$PSC.Fill <- impute(as.matrix(df$PSC.Fill), "median")
+
+hist(df$Carb.Rel)
+df$Carb.Rel <- impute(as.matrix(df$Carb.Rel), "median")
+
+hist(df$Carb.Volume)
+df$Carb.Volume <- impute(as.matrix(df$Carb.Volume), "median")
+
+hist(df$Pressure.Setpoint)
+df$Pressure.Setpoint <- impute(as.matrix(df$Pressure.Setpoint), "median")
+
+```
+
+#Let's check again for NAs and see the severity
+```{r}
+library(VIM)
+mice_plot <- aggr(df, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels=names(df), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"))
+```
+
+#Review the correlations
+```{r}
+library(corrplot)
+df_cor <- df
+df_cor$Brand.Code <- NULL #Need to remove because a categorical variable
+df_cor$PH <- NULL #Need to remove because our dependent variable
+#correlations <- cor(df_cor)
+#corrplot(correlations)
+#corrplot(correlations, order = "hclust")
+```
+#Identfiy high correlations
+```{r}
+#threshold <- 0.8
+#tooHigh <- findCorrelation(correlations, cutoff = threshold, names = TRUE, verbose = TRUE) 
+#tooHigh #eight columns - we should remove
+```
+#REMEMBER THIS FOR EDITING THE TEST DATA!!
+```{r}
+df_cor$Balling <- NULL
+df_cor$Hyd.Pressure3 <- NULL
+df_cor$Alch.Rel <- NULL
+df_cor$Balling.Lvl <- NULL
+df_cor$Density <- NULL
+df_cor$Density <- NULL
+df_cor$Carb.Volume <- NULL
+df_cor$Bowl.Setpoint <- NULL
+df_cor$Filler.Speed <- NULL
+```
+# a few correlations that we shall consider removing those columns
+
+# boxplots and histograms to check distributions
+```{r}
+library(ggplot2)
+d <- melt(df_cor)
+
+ggplot(d,aes(x = value)) + 
+  facet_wrap(~variable,scales = "free_x") + 
+  geom_histogram()
+```
+# Zero values for some variables still need to be considered: Mnf.Flow, Hyd.Pressure1 &2
+```{r}
+ggplot(d, aes(x=variable, y=value)) +
+  facet_wrap(~variable,scales = "free") +
+  geom_boxplot() +
+  ggtitle("Boxplots")
+```
+#All the more reason to consider doing something with the zeros...
+
+#Check for skewness
+```{r}
+
+#skewValues <- apply(df_cor, 2, skewness) 
+#View(skewValues) #quite a lot of high, negative values likely due to the zeros
+```
+#backwards stepwise regression
+
+```{r}
+
+df = read.csv(file = "F:/HW 2/StudentData.csv", 
+                      na.strings = c("", " "), 
+                      header = TRUE) 
+head(df)
+names(df)
+lreg<- glm(df$Brand.Code~.,data=df,family="binomial")
+summary(lreg)
+lreg$coefficients
+#measure the 95% confidence intervals for the 40 set data
+confint(lreg,  level=0.95)
+#when run separetly no errors
+#step(lreg,data=df,direction="backward")
+
+#plotting results
+ggplot(d, aes(x=variable, y=value)) +
+  facet_wrap(~variable,scales = "free") +
+  geom_boxplot() +
+  ggtitle("Boxplots")
+```
+# from the above MFflow, Hyd.Pressure4, Carb.Flow,Balling.Lvl has significant relation with Brand.Code 
+
+
+
+df = read.csv(file = "F:/HW 2/StudentData.csv", 
+                      na.strings = c("", " "), 
+                      header = TRUE) 
+save_plots = T
+set.seed(0)
+library(caret)
+library("tidyr")
+library(AppliedPredictiveModeling)
+data(df)
+
+pred <- df%>%select(-Yield)
+yield <- df%>%select(Yield)
+
+
+
+
+require(pls)
+set.seed (1000)
+
+
+trainingmydata = createDataPartition( yield, p=0.8 )
+
+Predictorstraining = Predictors[trainingmydata$Resample1,]
+yieldtraining = yield[trainingmydata$Resample1]
+
+Predictorstesting = Predictors[-trainingmydata$Resample1,]
+yieldtesting = yield[-trainingmydata$Resample1]
+#__PLS MODEL__
+#Build some linear models and predict the performance on the testing data set:
+set.seed(0)
+plsmodel = train(Predictorstraining, yieldtraining, method="pls",
+                   tuneLength=40, 
+                   preProcess=c("center","scale"), 
+                  trControl=trainControl(method="repeatedcv",repeats=5))
+yes = predict( plsmodel, newdata=Predictorstesting)
+r2_pls = cor(yes,yieldtesting,method="pearson")^2
+rmse_pls = sqrt( mean( (yes-yieldtesting)^2 ) )
+print( sprintf( "%-10s: Testing R^2= %10.6f; RMSE= %10.6f", "PLS", r2_pls, rmse_pls ) )
+
+# variable importance
+varimp <- varImp(plsmodel)
+ggplot(varimp, top = 10) + ggtitle("Importance of top 10 predictors for PLS model")
+
+
+
