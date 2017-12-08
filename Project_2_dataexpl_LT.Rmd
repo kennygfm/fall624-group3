@@ -1,0 +1,187 @@
+---
+title: "Project_2_Group_3"
+author: "Logan Thomson"
+date: "11/26/2017"
+output: html_document
+---
+
+##LOAD PACKAGES  
+
+```{r load_pkgs, message=FALSE}
+library(e1071)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(VIM)
+library(corrplot)
+```  
+
+###LOAD DATA  
+
+Loading data from GitHub:  
+
+```{r}
+# open file
+path <- ("https://raw.githubusercontent.com/kennygfm/fall624-group3/master/StudentData.csv")
+con <- file(path, open="r")
+
+# "Student" soft drink data
+soda <- read.csv(con, header=T, sep=",", stringsAsFactors = F)
+
+# close file
+close(con)
+
+soda[ , c(16,18,21,28)] <- sapply(soda[, c(16,18,21,28)], as.numeric)  # get rid of pesky integer values
+```  
+
+Dataset is 32 predictors + 1 target variable (`Brand.Code`), with 2571 observations:  
+
+```{r dim}
+dim(soda) 
+```  
+
+With the exception of the `Brand.Code`, all variables are either numeric or integers:  
+
+```{r data_structure}
+str(soda)
+```  
+
+##EXPLORE DATA  
+
+####Summary Table:  
+
+There are too many predictors for the standard `summary` function to produce an easy-to-read output. A more useful summary with skewness, correlations to `PH`, and `NA` counts is below. The variable `Brand.Code`, because it is a character vector, is left out:  
+
+```{r summary_table}
+means <- sapply(soda[-1], function(y) mean(y, na.rm = TRUE))
+medians <- sapply(soda[-1], function(y) median(y, na.rm = TRUE))
+IQRs <- sapply(soda[-1], function(y) IQR(y, na.rm = TRUE))
+skews <- sapply(soda[-1], function(y) skewness(as.numeric(y), na.rm = TRUE))
+cors <- as.vector(cor(soda$PH, soda[,2:ncol(soda)], use = "complete.obs"))
+NAs <- sapply(soda[-1], function(y) sum(length(which(is.na(y)))))
+
+soda_summary <- data.frame(means, medians, IQRs, skews, cors, NAs)
+colnames(soda_summary) <- c("MEAN", "MEDIAN", "IQR", "SKEW", "$r_{PH}$", "NAs")
+soda_summary <- round(soda_summary, 2)
+
+soda_summary
+```  
+
+The table above shows some useful information regarding the mean and median for each predictor, and comparing the differences between the two, skewness of some variables is already apparent. Using the `skewness` function from `e1071`, the predictors `MFR`, `Filler.Speed`, `Carb.Flow`, and `Bowl.Setpoint` are shown to be the most negatively skewed. On the other end of the spectrum, `Oxygen.Filler`, `Temperature`, `Air.Pressurer`, `PSC.Fill`, and `PSC.CO2` are all positively skewed. Many of these predictors have to do with gasses and air pressure, and we may want to consider scaling and centering these and other predictors before fitting any models.  
+
+Boxplots of these predictors are provided below:  
+
+####Boxplots:  
+
+```{r skewed_preds}
+skewed_preds <- soda[, c(9,18,19,23,27,30)]
+
+s <- gather(skewed_preds, "predictor", "value")
+
+ggplot(s, aes(predictor, value)) + geom_boxplot(aes(fill = predictor)) + facet_wrap(~predictor, scale="free") + scale_fill_discrete(guide=FALSE) + scale_y_continuous('', labels = NULL, breaks = NULL) +
+  scale_x_discrete('') + ggtitle("Most Skewed Predictors")
+```  
+
+####Correlated Predictors:  
+
+Aside from skewed variables, several variables have high correlations with each other:  
+
+```{r cor_plt}
+cors_all_preds <- round(cor(soda[-1], use="complete.obs"), 2)
+
+cors_all_preds <- as.data.frame(cors_all_preds)
+
+corrplot(as.matrix(cors_all_preds), method="color", tl.cex=.5, tl.col=colors()[598])
+```  
+
+As the columns are organized in the data, some interesting patterns are present in the correlogram.  Two areas show distinct positive correlations - these are the predictors that have something to do with carbonation, and another area where different pressure levels correlate with each other. Another set of variables are negatively correlated with these pressure predictors, these have to do with the filling of the bottles, so this makes sense (`Oxygen.Filler`, `Bowl.Setpoint`, `Pressure.Setpoint`).  
+
+Some of these same precictors are also correlated well with the target `PH` variable:  
+
+```{r tgt_corr_var}
+vars <- rownames(cors_all_preds)
+
+top_ph_cors <- cors_all_preds$PH
+
+top_ph_cors <- as.data.frame(cbind(vars, as.numeric(top_ph_cors)))
+
+top_ph_cors <- top_ph_cors %>%
+  arrange(desc(V2))
+
+top_ph_cors[1:11, ]
+``` 
+
+####Missing Values:   
+
+One of the predictors (`MFR`) contains a considerable amount of missing values (~$8 \%$ of the cases). This variable is also highly skewed, so imputing using only the median/mean should be done with care, or other methods investigated:  
+
+```{r missing_vals}
+sort(NAs, decreasing = TRUE)
+``` 
+
+```{r mfr_hist}
+hist(soda$MFR, col='Blue', main='Distribution of MFR Predictor')
+```
+
+Most of the other predictors are missing values for a marginal number of cases ($< 3\%$), but a few cases are missing data across a number of the predictors.  Instead of removing entire variables or imputing them all, we may want to remove some of the cases from the data instead. The plot below shows the ratio and location of the missing values within the dataset:  
+
+```{r missing_values, message=FALSE, warning=FALSE}
+aggr(soda, col=c('navyblue', 'red'), numbers=TRUE, cex.numbers=.75, cex.axis=0.5)
+```  
+
+Counts of the different brand codes are below:  
+
+```{r brand_counts}
+table(soda$Brand.Code)
+```  
+
+Most of the cases (nearly half) are brand "B"; the next most common is brand "D", followed by "C", and "A" closely behind that.  120 ($> 5 \%$) of the cases in the soda dataset contain no brand name. Whether these are all the same brand will require some exploration.  
+
+
+```{r blank_brand}
+brand_unknown <- soda[soda$Brand.Code == '', ]
+```  
+
+The same method used to create the overall summary for all brands is used for the separated "unknown" or blank brand name. The minimum and maximum have been added to show the range in addition to the IQR for each predictor within this subset:    
+
+```{r unkwn_brand_summ}
+mins <- sapply(brand_unknown[-1], function(y) min(y, na.rm = TRUE))
+means <- sapply(brand_unknown[-1], function(y) mean(y, na.rm = TRUE))
+medians <- sapply(brand_unknown[-1], function(y) median(y, na.rm = TRUE))
+IQRs <- sapply(brand_unknown[-1], function(y) IQR(y, na.rm = TRUE))
+maxs <- sapply(brand_unknown[-1], function(y) max(y, na.rm = TRUE))
+skews <- sapply(brand_unknown[-1], function(y) skewness(as.numeric(y), na.rm = TRUE))
+cors <- as.vector(cor(brand_unknown$PH, brand_unknown[,2:ncol(brand_unknown)], use = "complete.obs"))
+NAs <- sapply(brand_unknown[-1], function(y) sum(length(which(is.na(y)))))
+
+brand_unknown_summary <- data.frame(mins, means, medians, IQRs, maxs, skews, cors, NAs)
+colnames(brand_unknown_summary) <- c("MIN", "MEAN", "MEDIAN", "IQR", "MAX", "SKEW", "$r_{PH}$", "NAs")
+brand_unknown_summary <- round(brand_unknown_summary, 2)
+
+brand_unknown_summary
+```  
+
+Examining the results, there is not too much variance in the predictors that actually rely on the makeup (chemical or otherwise) of the soda itself. These would be predictors like `Fill.Ounces`, `PH`, and `Carb.Volume`.  The predictors that have more variance have to do with temperature and pressure, and given the changes in these across all predictors, it is probably safe to assume that the unknown brand is just un-named.  
+
+Just to make the case, we'll look at the same stats for another brand ("D"), just to see if the same predictors stay consistent, or if we should expect more variance:  
+
+```{r brand_d}
+brand_d <- soda[soda$Brand.Code == 'D', ]
+```  
+
+```{r brand_d_summ}
+mins <- sapply(brand_d[-1], function(y) min(y, na.rm = TRUE))
+means <- sapply(brand_d[-1], function(y) mean(y, na.rm = TRUE))
+medians <- sapply(brand_d[-1], function(y) median(y, na.rm = TRUE))
+IQRs <- sapply(brand_d[-1], function(y) IQR(y, na.rm = TRUE))
+maxs <- sapply(brand_d[-1], function(y) max(y, na.rm = TRUE))
+skews <- sapply(brand_d[-1], function(y) skewness(as.numeric(y), na.rm = TRUE))
+cors <- as.vector(cor(brand_d$PH, brand_d[,2:ncol(brand_d)], use = "complete.obs"))
+NAs <- sapply(brand_d[-1], function(y) sum(length(which(is.na(y)))))
+
+brand_d_summary <- data.frame(mins, means, medians, IQRs, maxs, skews, cors, NAs)
+colnames(brand_d_summary) <- c("MIN", "MEAN", "MEDIAN", "IQR", "MAX", "SKEW", "$r_{PH}$", "NAs")
+brand_d_summary <- round(brand_d_summary, 2)
+
+brand_d_summary
+```  
