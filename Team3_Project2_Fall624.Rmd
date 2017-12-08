@@ -1,0 +1,353 @@
+---
+title: "DATA 624 Fall 2017: Project 2"
+author: "Team 3: Mike Lennon, Kem Markus, Albania Nicasio, Dan Smilowitz, Logan Thomson"
+date: "December 12, 2017"
+output: 
+  word_document: 
+    fig_height: 5
+    fig_width: 7
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      comment = NA, fig.align = "center")
+```
+
+# Data Exploration
+```{r load-data}
+# read in data
+library(readxl)
+ph_data <- read_excel("StudentData.xlsx")
+```
+
+The names in the source file contain spaces; these are replaced with periods to make data manipulation simpler.  The structure of the data is presented below:
+```{r rename-str}
+library(stringr)
+names(ph_data) <- str_replace_all(names(ph_data), " ", ".")
+str(ph_data)
+```
+
+The data contains 2571 observations across 33 variables.  The first variable, `Brand.Code`, is a character; the remaining 32 variables are numeric.  Summary statistics of the variables are presented below:
+```{r summary}
+summary(ph_data)
+```
+
+
+## Missing Values
+As shown in the above summary, there are missing values across the variables -- the frequency and pattern of these missing values are presented below:
+```{r missing-pattern}
+library(VIM)
+aggr(ph_data, sortVars = TRUE, bar = FALSE, prop = FALSE, gap = 1, cex.axis = 0.7,
+     col = c("navyblue", "yellow"), ylab = c("Number Missing", "Pattern"))
+```
+
+The variable `MFR` has over 200 missing values, and the variable `Brand.Code` is missing 120 values.  Due to these high proportions of missingness, observations missing these variables are dropped:
+```{r drop-na}
+library(plyr) # loaded for later dependecies to avoid conflicts with dplyr
+library(tidyverse)
+ph_data <- drop_na(ph_data, MFR, Brand.Code)
+```
+
+
+Numeric variables are plotted below to determine the best method of imputation:
+```{r var-hist}
+theme_set(theme_light())
+# histograms
+ph_data %>% 
+  select(-Brand.Code) %>% 
+  gather(Variable, Values) %>% 
+  ggplot(aes(x = Values)) +
+  geom_histogram(alpha = 0.25, col = "black", bins = 20) +
+  facet_wrap(~ Variable, scales = "free", nrow = 4)
+# boxplot
+ph_data %>% 
+  select(-Brand.Code) %>% 
+  gather(Variable, Values) %>% 
+  ggplot(aes(x = 1, y = Values)) +
+  geom_boxplot() +
+  facet_wrap(~ Variable, scales = "free", nrow = 4)
+
+```
+
+A number of these variables, especially `Filler.Speed` and `MFR`, exhibit a good deal of skewness.  This suggests that imputing with the mean will not be accurate; an alternate method should be investigated.
+
+
+## Correlation
+The correlation between the variables is investigated:
+```{r cor}
+ph_cors <- cor(ph_data %>% select(-Brand.Code), use="complete.obs")
+library(corrplot)
+corrplot(as.matrix(ph_cors), method = "color", tl.cex = 0.5, tl.col = "black")
+```
+
+As the columns are organized in the data, some interesting patterns are present in the correlogram. Two areas show distinct positive correlations -- these are the predictors that have something to do with carbonation, and another area where different pressure levels correlate with each other. Another set of variables are negatively correlated with these pressure predictors, these have to do with the filling of the bottles, so this makes sense (`Oxygen.Filler`, `Bowl.Setpoint`, `Pressure.Setpoint`).
+
+Some of these same precictors are also correlated well with the target PH variable:
+```{r top-ph-cors}
+library(pander)
+ph_cors %>% 
+  as.data.frame() %>% 
+  select(Correlation = PH) %>% 
+  rownames_to_column("Variable") %>% 
+  arrange(desc(Correlation)) %>% 
+  top_n(11, Correlation) %>% 
+  pander()
+```
+
+Three similarly-names variables, `Hyd.Pressure1`, `Hyd.Pressure2`, and `Hyd.Pressure3`show large spikes at values of 0 in the histograms above, and show high correlations.  This suggests that these variables are candidates for removal.  These variables, along with a fourth related variable `Hyd.Pressure4`, are first investigated across the four `Brand.Code` values:
+```{r pressure-brand}
+ph_data %>% 
+  select(Brand.Code, Hyd.Pressure1:Hyd.Pressure4) %>% 
+  gather(HydNum, Value, -Brand.Code) %>% 
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 25) +
+  facet_grid(Brand.Code ~ HydNum, scales = "free") +
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(NULL, NULL, NULL) +
+  scale_y_continuous(NULL, NULL, NULL) +
+  ggtitle("Distribution of Hyd.Pressure variables across Brand.Codes")
+```
+
+These distributions suggest that there is no behavior in `Hyd.Pressure1`, `Hyd.Pressure2`, or `Hyd.Pressure3` indicated by `Brand.Code`.  For this reason, these three variables are dropped.  `Hyd.Pressure4` is retained, as there appear to be differences in its behavior across `Brand.Code`:
+```{r drop-pressure}
+ph_data <- ph_data %>% select(-(Hyd.Pressure1:Hyd.Pressure3))
+```
+
+
+# Data Preprocessing
+Before imputation, the data is split into predictors and a response:
+```{r train-test}
+ph_pred <- ph_data %>% select(-PH)
+ph_resp <- ph_data %>% select(PH)
+```
+
+
+## Imputation
+Due to the skewness of and relationship between predictors, they are imputed using k-nearest neighbors.  Prior to this imputation, predictors are centered and scaled to avoid bias in predictive models, and highly-correlated predictors are removed.  The `preProcess` function from the `caret` package is capable of performing all of these operations -- per the documentation for this function:
+
+  > The operations are applied in this order: zero-variance filter, near-zero variance filter, correlation filter, Box-Cox/Yeo-Johnson/exponential transformation, centering, scaling, range, imputation, PCA, ICA then spatial sign.
+
+```{r preprocess}
+library(caret)
+# set up pre-processing transformation
+ph_preproc <- preProcess(ph_pred, method = c("knnImpute", "center", "scale", "corr"))
+# apply pre-processing to data
+ph_pred <- predict(ph_preproc, ph_pred)
+```
+
+
+## Partitioning
+With pre-precessing complete, both predictor and response data are partitioned into a training and testing set:
+```{r train-test}
+# get rows for training subsets
+set.seed(100)  # for replicability
+train_rows <- createDataPartition(ph_resp$PH, p = 0.75, list = FALSE)
+# create training sets
+ph_pred_train <- ph_pred[train_rows, ]
+ph_resp_train <- ph_resp[train_rows, ]
+# creae test sets
+ph_pred_test <- ph_pred[-train_rows, ]
+ph_resp_test <- ph_resp[-train_rows, ]
+```
+
+
+
+# Model Creation
+The pre-processed data is used to fit an array of models: linear models; non-linear models; and tree based models.  For consistency, the same training controls are used for all models:
+```{r train-control}
+# use 15-fold cross-validation for training
+set.seed(100)
+mdl_ctrl <- trainControl(method = "cv", number = 15)
+```
+
+## Linear Models
+TO BE FILLED IN 
+
+## Non-Linear Models
+I DIDN'T CHANGE THIS FOR THE NEW VARIABLE NAMES
+```{r eval=FALSE}
+#MARS
+library(earth)
+marsFit <- earth(x = trainingData_x, y = trainingData_y)
+marsFit
+summary(marsFit) #RSq = 0.4738075
+plotmo(marsFit)
+
+marsPred <- predict(marsFit, newdata = testData_x)
+marsPerf <- postResample(pred = marsPred, obs = testData_y)
+
+#Now let's do NN
+library(nnet)
+nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),
+                        .size = c(1:10),
+                        .bag = FALSE)
+set.seed(100)
+nnetTune <- train(x = trainingData_x, y = trainingData_y,
+                  method = "avNNet",
+                  tuneGrid = nnetGrid,
+                  preProc = c("center", "scale"),
+                  linout = TRUE,
+                  trace = FALSE,
+                  maxit = 50)
+nnetTune #best Rsqaured is 0.5328831
+summary(nnetTune)
+nnetPred <- predict(nnetTune, newdata = testData_x)
+nnetPerf <- postResample(pred = nnetPred, obs = testData_y) 
+
+
+#Now let's do SVM
+library(kernlab)
+
+#Note that we have to convert Brand.Code to numeric or remove...
+bc <- as.character(bc)
+bc[bc=='A'] <-1
+bc[bc=='B'] <-2
+bc[bc=='C'] <-3
+bc[bc=='D'] <-4
+bc <- as.numeric(bc)
+
+#some updates to the training data pre the changes
+trainingData_x <- cbind(df_cor, bc)
+trainingData_x <- rename(trainingData_x, Brand.Code=bc)
+testData_x <- trainingData_x[2001:2251,]
+trainingData_x <- trainingData_x[1:2000,]
+
+svmTune <- train(x = trainingData_x, y = trainingData_y,
+                 method = "svmLinear", #for homework play with various values, svmRadial, svmPoly (takes the longest time), svmLinear
+                 tuneLength = 14,
+                 preProc = c("center", "scale"),
+                 trControl = trainControl(method = "cv"))
+svmTune #Rsquared is 0.3210737
+summary(svmTune)
+
+#test data BrandCode needs to be updated too
+df_test$Brand.Code <- as.character(df_test$Brand.Code)
+df_test$Brand.Code[df_test$Brand.Code=='A'] <-1
+df_test$Brand.Code[df_test$Brand.Code=='B'] <-2
+df_test$Brand.Code[df_test$Brand.Code=='C'] <-3
+df_test$Brand.Code[df_test$Brand.Code=='D'] <-4
+df_test$Brand.Code <- as.numeric(df_test$Brand.Code)
+
+svmPred <- predict(svmTune, newdata = trainingData_x)
+svmPerf <- postResample(pred = svmPred, obs = testData_y) #SVM(radial) is very poor, may try other kernels
+
+
+
+#KNN - NOT WORKING YET...
+library(caret)
+knnTune <- train(x = trainingData_x, y = trainingData_y, method = "knn",
+                 preProc = c("center", "scale"),
+                 tuneLength = 10)
+knnTune #max(knnModel$results$Rsquared) 0.2349691
+knnPred <- predict(knnModel, newdata = trainingData_x) #NAs need to be removed
+knnPerf <- postResample(pred = knnPred, obs = testData_y)
+```
+
+
+# Tree-Based Models
+STILL NEEDS TEXT
+
+## Conventional Tree Model
+```{r tree}
+library(rpart)
+# conventional tree of max depth
+set.seed(100)
+rpartTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+                   method = "rpart2", trControl = mdl_ctrl)
+rpartPred <- predict(rpartTune, newdata = ph_pred_test)
+rpartPerf <- postResample(pred = rpartPred, obs = ph_resp_test$PH)
+```
+
+
+## Rule-Based Model
+```{r rule-tree}
+library(RWeka)
+set.seed(100)
+ruleTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+                  method = "M5Rules", trControl = mdl_ctrl)
+rulePred <- predict(ruleTune, newdata = ph_pred_test)
+rulePerf <- postResample(pred = rulePred, obs = ph_resp_test)
+```
+
+
+## Bagged Tree Model
+```{r bagged-tree}
+library(ipred)
+set.seed(100)
+bagTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+                 method = "treebag", trControl = mdl_ctrl)
+bagPred <- predict(bagTune, newdata = ph_pred_test)
+bagPerf <- postResample(pred = bagPred, obs = ph_resp_test$PH)
+```
+
+
+## Random Forest Model
+```{r rf}
+library(randomForest)
+set.seed(100)
+rfTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+                method = "rf", trControl = mdl_ctrl,
+                ntrees = 1000, importance = TRUE)
+rfPred <- predict(rfTune, newdata = ph_pred_test)
+rfPerf <- postResample(pred = rfPred, obs = ph_resp_test$PH)
+```
+
+
+## Boosted Tree Model
+```{r boosted-tree}
+library(gbm)
+set.seed(100)
+boostTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+                   method = "gbm", trControl = mdl_ctrl,
+                   tuneGrid = expand.grid(shrinkage = c(0.01, 0.05, 0.1),
+                                          interaction.depth = seq(1, 9, 2),
+                                          n.trees = seq(100, 1000, 100),
+                                          n.minobsinnode = 10),
+                   verbose = FALSE)
+boostPred <- predict(boostTune, newdata = ph_pred_test)
+boostPerf <- postResample(pred = boostPred, obs = ph_resp_test$PH)
+```
+
+
+## Cubist Model
+```{r cubist}
+library(Cubist)
+set.seed(100)
+cubistTune <- train(x = ph_pred_train, y = ph_resp_train,
+                    method = "cubist", trControl = mdl_ctrl,
+                    tuneGrid = expand.grid(neighbors = c(0, 1, 5, 9),
+                                           committees = c(1, 25, 50, 75, 100)))
+cubistPred <- predict(cubistTune, newdata = ph_pred_test)
+cubistPerf <- postResample(pred = cubistPred, obs = ph_resp_test)
+
+```
+
+
+# Model Selection & Prediction
+## Model Performance Comparison
+The resampled RMSE & RMSE performance against the test set is shown below for each of the models created:
+```{r compare}
+model_perf <- function (model_set, metric = "RMSE") {
+  mdl_names <- character()
+  resampled <- numeric()
+  test <- numeric()
+  for (mdl in model_set) {
+    mdl_names <- c(mdl_names, mdl)
+    resampled <- c(resampled, min(get(paste0(mdl, "Tune"))$results[[metric]]))
+    test <- c(test, get(paste0(mdl, "perf"))[metric])
+  }
+  pander(data.frame(`Resampled RMSE` = resampled, `Test RMSE` = test,
+                    row.names = mdl_names, check.names = FALSE), digits = 4)
+}
+
+model_perf(c("rpart", "rule", "bag", "rf", "boost", "cubist"))
+```
+
+
+## Predictor Importance
+ONCE WE PICK A MODEL
+
+
+## Prediction of Future Data
+ONCE WE PICK A MODEL
