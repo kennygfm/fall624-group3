@@ -535,7 +535,7 @@ THIS STILL DOESN'T WORK
 ```{r cubist}
 library(Cubist)
 set.seed(100)
-cubistTune <- train(x = ph_pred_train, y = ph_resp_train,
+cubistTune <- train(x = ph_pred_train_num, y = ph_resp_train$PH,
                     method = "cubist", trControl = mdl_ctrl)
 cubistPred <- predict(cubistTune, newdata = ph_pred_test)
 cubistPerf <- postResample(pred = cubistPred, obs = ph_resp_test)
