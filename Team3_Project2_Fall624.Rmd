@@ -164,6 +164,39 @@ mdl_ctrl <- trainControl(method = "cv", number = 15)
 ```
 
 ## Linear Models
+
+```{r eval=FALSE}
+##Numeric brand code for training
+bc <- ph_pred_train$Brand.Code
+bc <- as.character(bc)
+bc[bc=='A'] <-1
+bc[bc=='B'] <-2
+bc[bc=='C'] <-3
+bc[bc=='D'] <-4
+bc <- as.numeric(bc)
+ph_pred_train_lm <- ph_pred_train
+ph_pred_train_lm$Brand.Code <- bc
+
+
+## Change Brand code for test set
+ph_pred_test_lm <- ph_pred_test
+ph_pred_test_lm$Brand.Code <- as.character(ph_pred_test_lm$Brand.Code)
+ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='A'] <-1
+ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='B'] <-2
+ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='C'] <-3
+ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='D'] <-4
+ph_pred_test_lm$Brand.Code <- as.numeric(ph_pred_test_lm$Brand.Code)
+
+
+
+regressData <- data.frame(ph_pred_train_lm,ph_resp_train, stringsAsFactors = FALSE)
+lmTune<-train(PH ~., data = regressData, method = "lm")
+summary(lmTune) # The R Squared was only .37 
+lmPred <- predict(lmTune, newdata = ph_pred_test_lm)
+lmPerf <- postResample(pred = lmPred, obs = unlist(ph_resp_test) )
+
+
+```
 TO BE FILLED IN 
 
 ## Non-Linear Models
