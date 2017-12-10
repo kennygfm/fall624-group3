@@ -164,6 +164,11 @@ mdl_ctrl <- trainControl(method = "cv", number = 15)
 ```
 
 ## Linear Models
+```{r eval=FALSE}
+#Libraries used:
+library(pls)
+library(leaps)
+```
 
 ```{r eval=FALSE}
 ##Numeric brand code for training
@@ -205,19 +210,18 @@ glmPerf <- postResample(pred = glmPred, obs = unlist(ph_resp_test) )
 
 
 #### Principal Components Regression ####
-library(pls)
 pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
 summary(pcrTune)
 validationplot(pcrTune, val.type="RMSE")
 validationplot(pcrTune, val.type = "R2")
-# The We chose 18 Principal Components
+
+# Then we choose 18 Principal Components
 pcrPred <- predict(pcrTune, newdata = ph_pred_test_lm, ncomp=18)
 pcrPerf <- postResample(pred = pcrPred, obs = unlist(ph_resp_test) )
 # There are too many principal components in this model - making it difficult to interpret which each component represents.
 
 ######## Stepwise Backwards Linear Regression ####
 # The full linear regression had some variables with high p values
-library(leaps)
 # No variables
 null <-  lm(PH ~1, data = regressData)
 
