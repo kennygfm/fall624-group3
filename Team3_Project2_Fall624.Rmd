@@ -165,17 +165,14 @@ mdl_ctrl <- trainControl(method = "cv", number = 15)
 TO BE FILLED IN 
 
 ## Non-Linear Models
-I DIDN'T CHANGE THIS FOR THE NEW VARIABLE NAMES
+VARIABLE NAMES UPDATED PER KEN
 ```{r eval=FALSE}
 #MARS
 library(earth)
-marsFit <- earth(x = trainingData_x, y = trainingData_y)
-marsFit
-summary(marsFit) #RSq = 0.4738075
-plotmo(marsFit)
+marsFit <- earth(x = ph_pred_train, y = ph_resp_train)
 
-marsPred <- predict(marsFit, newdata = testData_x)
-marsPerf <- postResample(pred = marsPred, obs = testData_y)
+marsPred <- predict(marsFit, newdata = ph_pred_test)
+marsPerf <- postResample(pred = marsPred, obs = ph_resp_test)
 
 #Now let's do NN
 library(nnet)
@@ -183,65 +180,71 @@ nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),
                         .size = c(1:10),
                         .bag = FALSE)
 set.seed(100)
-nnetTune <- train(x = trainingData_x, y = trainingData_y,
+nnetTune <- train(x = ph_pred_train, y = ph_resp_train,
                   method = "avNNet",
                   tuneGrid = nnetGrid,
                   preProc = c("center", "scale"),
                   linout = TRUE,
                   trace = FALSE,
                   maxit = 50)
-nnetTune #best Rsqaured is 0.5328831
-summary(nnetTune)
-nnetPred <- predict(nnetTune, newdata = testData_x)
-nnetPerf <- postResample(pred = nnetPred, obs = testData_y) 
+nnetPred <- predict(nnetTune, newdata = ph_pred_test)
+nnetPerf <- postResample(pred = nnetPred, obs = ph_resp_test) 
 
 
 #Now let's do SVM
 library(kernlab)
 
 #Note that we have to convert Brand.Code to numeric or remove...
+bc <- ph_pred_train$Brand.Code
 bc <- as.character(bc)
 bc[bc=='A'] <-1
 bc[bc=='B'] <-2
 bc[bc=='C'] <-3
 bc[bc=='D'] <-4
 bc <- as.numeric(bc)
+ph_pred_train_svm <- ph_pred_train
+ph_pred_train_svm$Brand.Code <- bc
 
-#some updates to the training data pre the changes
-trainingData_x <- cbind(df_cor, bc)
-trainingData_x <- rename(trainingData_x, Brand.Code=bc)
-testData_x <- trainingData_x[2001:2251,]
-trainingData_x <- trainingData_x[1:2000,]
+#test data BrandCode needs to be updated too
+ph_pred_test_svm <- ph_pred_test
+ph_pred_test_svm$Brand.Code <- as.character(ph_pred_test_svm$Brand.Code)
+ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='A'] <-1
+ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='B'] <-2
+ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='C'] <-3
+ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='D'] <-4
+ph_pred_test_svm$Brand.Code <- as.numeric(ph_pred_test_svm$Brand.Code)
 
-svmTune <- train(x = trainingData_x, y = trainingData_y,
-                 method = "svmLinear", #for homework play with various values, svmRadial, svmPoly (takes the longest time), svmLinear
+#Radial first
+set.seed(100)
+svmTune <- train(x = ph_pred_train_svm, y = ph_resp_train,
+                 method = "svmRadial", 
                  tuneLength = 14,
                  preProc = c("center", "scale"),
                  trControl = trainControl(method = "cv"))
-svmTune #Rsquared is 0.3210737
-summary(svmTune)
 
-#test data BrandCode needs to be updated too
-df_test$Brand.Code <- as.character(df_test$Brand.Code)
-df_test$Brand.Code[df_test$Brand.Code=='A'] <-1
-df_test$Brand.Code[df_test$Brand.Code=='B'] <-2
-df_test$Brand.Code[df_test$Brand.Code=='C'] <-3
-df_test$Brand.Code[df_test$Brand.Code=='D'] <-4
-df_test$Brand.Code <- as.numeric(df_test$Brand.Code)
+svmRadialPred <- predict(svmTune, newdata = ph_pred_test_svm)
+svmRadialPerf <- postResample(pred = svmRadialPred, obs = ph_resp_test) 
 
-svmPred <- predict(svmTune, newdata = trainingData_x)
-svmPerf <- postResample(pred = svmPred, obs = testData_y) #SVM(radial) is very poor, may try other kernels
-
-
-
-#KNN - NOT WORKING YET...
-library(caret)
-knnTune <- train(x = trainingData_x, y = trainingData_y, method = "knn",
+#Linear first
+set.seed(100)
+svmTune <- train(x = ph_pred_train_svm, y = ph_resp_train,
+                 method = "svmLinear", 
+                 tuneLength = 14,
                  preProc = c("center", "scale"),
-                 tuneLength = 10)
-knnTune #max(knnModel$results$Rsquared) 0.2349691
-knnPred <- predict(knnModel, newdata = trainingData_x) #NAs need to be removed
-knnPerf <- postResample(pred = knnPred, obs = testData_y)
+                 trControl = trainControl(method = "cv"))
+
+svLinearPred <- predict(svmTune, newdata = ph_pred_test_svm)
+svmLinearPerf <- postResample(pred = svLinearPred, obs = ph_resp_test) 
+
+#KNN 
+library(caret)
+set.seed(100)
+#As with SVM we must use training data that converts Brand.Code to numeric
+knnModel <- train(x = ph_pred_train_svm, y = ph_resp_train, method = "knn", 
+                  tuneLength = 10)
+knnModel #max(knnModel$results$Rsquared) 0.2349691
+knnPred <- predict(knnModel, newdata = ph_pred_test_svm) 
+knnPerf <- postResample(pred = knnPred, obs = ph_resp_test)
 ```
 
 
