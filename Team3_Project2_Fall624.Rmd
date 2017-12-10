@@ -171,7 +171,7 @@ library(leaps)
 ```
 
 ```{r eval=FALSE}
-##Numeric brand code for training
+##Numeric Brand.Code for training
 bc <- ph_pred_train$Brand.Code
 bc <- as.character(bc)
 bc[bc=='A'] <-1
@@ -183,7 +183,8 @@ ph_pred_train_lm <- ph_pred_train
 ph_pred_train_lm$Brand.Code <- bc
 
 
-## Change Brand code for test set
+## Change Brand.Code for test set
+
 ph_pred_test_lm <- ph_pred_test
 ph_pred_test_lm$Brand.Code <- as.character(ph_pred_test_lm$Brand.Code)
 ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='A'] <-1
@@ -209,7 +210,7 @@ glmPerf <- postResample(pred = glmPred, obs = unlist(ph_resp_test) )
 # Then best glm family tested was gaussian 
 
 
-#### Principal Components Regression ####
+################# Principal Components Regression ######
 pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
 summary(pcrTune)
 validationplot(pcrTune, val.type="RMSE")
@@ -220,7 +221,7 @@ pcrPred <- predict(pcrTune, newdata = ph_pred_test_lm, ncomp=18)
 pcrPerf <- postResample(pred = pcrPred, obs = unlist(ph_resp_test) )
 # There are too many principal components in this model - making it difficult to interpret which each component represents.
 
-######## Stepwise Backwards Linear Regression ####
+################# Stepwise Backwards Linear Regression ######
 # The full linear regression had some variables with high p values
 # No variables
 null <-  lm(PH ~1, data = regressData)
