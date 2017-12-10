@@ -197,7 +197,6 @@ lmPerf <- postResample(pred = lmPred, obs = unlist(ph_resp_test) )
 
 
 ```
-TO BE FILLED IN 
 
 ## Non-Linear Models
 VARIABLE NAMES UPDATED PER KEN
