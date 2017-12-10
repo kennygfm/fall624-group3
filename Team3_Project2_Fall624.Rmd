@@ -196,6 +196,43 @@ lmPred <- predict(lmTune, newdata = ph_pred_test_lm)
 lmPerf <- postResample(pred = lmPred, obs = unlist(ph_resp_test) )
 
 
+################# GLM Regression ######
+glmTune<-glm(PH ~., data=regressData, family="quasipoisson")  
+summary(glmTune) # 
+glmPred <- predict(glmTune, newdata = ph_pred_test_lm)
+glmPerf <- postResample(pred = glmPred, obs = unlist(ph_resp_test) )
+# Then best glm family tested was gaussian 
+
+
+#### Principal Components Regression ####
+library(pls)
+pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
+summary(pcrTune)
+validationplot(pcrTune, val.type="RMSE")
+validationplot(pcrTune, val.type = "R2")
+# The We chose 18 Principal Components
+pcrPred <- predict(pcrTune, newdata = ph_pred_test_lm, ncomp=18)
+pcrPerf <- postResample(pred = pcrPred, obs = unlist(ph_resp_test) )
+# There are too many principal components in this model - making it difficult to interpret which each component represents.
+
+######## Stepwise Backwards Linear Regression ####
+# The full linear regression had some variables with high p values
+library(leaps)
+# No variables
+null <-  lm(PH ~1, data = regressData)
+
+# All variables
+full <- lm(PH ~., data = regressData)
+
+stepTune <- step(full, data=regressData, direction="backward")
+summary(stepTune)
+# The variables chosen for inclusion were 
+# Brand.Code , Fill.Ounces, PSC.Fill, Mnf.Flow, Carb.Pressure1, Hyd.Pressure4, Filler.Level, Temperature, Usage.cont, Carb.Flow          
+# Density, MFR, Pressure.Vacuum, Oxygen.Filler, Pressure.Setpoint, Carb.Rel 
+stepPred <- predict(stepTune, newdata = ph_pred_test_lm)
+stepPerf <- postResample(pred = stepPred, obs = unlist(ph_resp_test) )
+########################
+
 ```
 
 ## Non-Linear Models
