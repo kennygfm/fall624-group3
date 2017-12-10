@@ -251,8 +251,7 @@ knnPerf <- postResample(pred = knnPred, obs = ph_resp_test)
 
 
 # Tree-Based Models
-For this project we will see the constraints we encountered with our missing variables and the multiple regression. In the real world, the best model can be only as good as the variables measured by the study. We should also keep in mind that P-values can change based on the specific terms in the model. We can also appreciate that Stepwise regression and best subsets regression are great tools and can get you close to the correct model. However, studies have found that they generally don’t pick the correct model.
-With all these complications we agreed that Tree-based methods are simple and useful for interpretation, but also Combining many trees can often result in dramatic improvements in prediction accuracy, at the expense of some loss interpretation.
+##For this project we will see the constraints we encountered with our missing variables and the multiple regression. In the real world, the best model can be only as good as the variables measured by the study. We should also keep in mind that P-values can change based on the specific terms in the model. We can also appreciate that Stepwise regression and best subsets regression are great tools and can get you close to the correct model. However, studies have found that they generally don’t pick the correct model. With all these complications we agreed that Tree-based methods are simple and useful for interpretation, but also Combining many trees can often result in dramatic improvements in prediction accuracy, at the expense of some loss interpretation.
 For this project we use 6 models below.
 
 
