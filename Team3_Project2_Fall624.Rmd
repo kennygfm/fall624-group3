@@ -83,7 +83,7 @@ corrplot(as.matrix(ph_cors), method = "color", tl.cex = 0.5, tl.col = "black")
 
 As the columns are organized in the data, some interesting patterns are present in the correlogram. Two areas show distinct positive correlations -- these are the predictors that have something to do with carbonation, and another area where different pressure levels correlate with each other. Another set of variables are negatively correlated with these pressure predictors, these have to do with the filling of the bottles, so this makes sense (`Oxygen.Filler`, `Bowl.Setpoint`, `Pressure.Setpoint`).
 
-Some of these same precictors are also correlated well with the target PH variable:
+Some of these same predictors are also correlated well with the target PH variable:
 ```{r top-ph-cors}
 library(pander)
 ph_cors %>% 
@@ -96,6 +96,7 @@ ph_cors %>%
 ```
 
 Three similarly-names variables, `Hyd.Pressure1`, `Hyd.Pressure2`, and `Hyd.Pressure3`show large spikes at values of 0 in the histograms above, and show high correlations.  This suggests that these variables are candidates for removal.  These variables, along with a fourth related variable `Hyd.Pressure4`, are first investigated across the four `Brand.Code` values:
+
 ```{r pressure-brand}
 ph_data %>% 
   select(Brand.Code, Hyd.Pressure1:Hyd.Pressure4) %>% 
@@ -110,6 +111,7 @@ ph_data %>%
 ```
 
 These distributions suggest that there is no behavior in `Hyd.Pressure1`, `Hyd.Pressure2`, or `Hyd.Pressure3` indicated by `Brand.Code`.  For this reason, these three variables are dropped.  `Hyd.Pressure4` is retained, as there appear to be differences in its behavior across `Brand.Code`:
+
 ```{r drop-pressure}
 ph_data <- ph_data %>% select(-(Hyd.Pressure1:Hyd.Pressure3))
 ```
@@ -249,7 +251,10 @@ knnPerf <- postResample(pred = knnPred, obs = ph_resp_test)
 
 
 # Tree-Based Models
-STILL NEEDS TEXT
+For this project we will see the constraints we encountered with our missing variables and the multiple regression. In the real world, the best model can be only as good as the variables measured by the study. We should also keep in mind that P-values can change based on the specific terms in the model. We can also appreciate that Stepwise regression and best subsets regression are great tools and can get you close to the correct model. However, studies have found that they generally don’t pick the correct model.
+With all these complications we agreed that Tree-based methods are simple and useful for interpretation, but also Combining many trees can often result in dramatic improvements in prediction accuracy, at the expense of some loss interpretation.
+For this project we use 6 models below.
+
 
 ## Conventional Tree Model
 ```{r tree}
