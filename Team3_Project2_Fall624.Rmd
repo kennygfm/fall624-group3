@@ -12,92 +12,222 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
                       comment = NA, fig.align = "center")
-```
+```  
 
-# Data Exploration
-```{r load-data}
+# Data Exploration  
+
+```{r load-data, eval=FALSE, echo=FALSE}
 # read in data
 library(readxl)
-ph_data <- read_excel("StudentData.xlsx")
-```
 
-The names in the source file contain spaces; these are replaced with periods to make data manipulation simpler.  The structure of the data is presented below:
+ph_data <- read_excel("StudentData.xlsx")
+```  
+
+```{r load-data-github, eval=FALSE}
+# use if we want to load data from GitHub
+
+# open file
+path <- ("https://raw.githubusercontent.com/kennygfm/fall624-group3/master/StudentData.csv")
+con <- file(path, open="r")
+
+# "Student" soft drink data
+ph_data <- read.csv(con, header=T, sep=",", stringsAsFactors = F)
+
+# close file
+close(con)
+
+ph_data[ , c(16,18,21,28)] <- sapply(ph_data[, c(16,18,21,28)], as.numeric)  # get rid of pesky integer values
+```  
+
+The names in the source file contain spaces; these are replaced with periods to make data manipulation simpler.  The structure of the data is presented below:  
+
 ```{r rename-str}
 library(stringr)
+
 names(ph_data) <- str_replace_all(names(ph_data), " ", ".")
 str(ph_data)
-```
+```  
 
-The data contains 2571 observations across 33 variables.  The first variable, `Brand.Code`, is a character; the remaining 32 variables are numeric.  Summary statistics of the variables are presented below:
-```{r summary}
-summary(ph_data)
-```
+The data contains 2571 observations across 33 variables.  The first variable, `Brand.Code`, is a character; the remaining 32 variables are numeric.  Summary statistics of the variables are presented below:  
 
+```{r summary} 
+# summary(ph_data)  # use this or the summary table below?
+```  
 
-## Missing Values
-As shown in the above summary, there are missing values across the variables -- the frequency and pattern of these missing values are presented below:
+```{r summary_table}
+library(e1071)
+
+means <- sapply(ph_data[-1], function(y) mean(y, na.rm = TRUE))
+medians <- sapply(ph_data[-1], function(y) median(y, na.rm = TRUE))
+IQRs <- sapply(ph_data[-1], function(y) IQR(y, na.rm = TRUE))
+vars <- sapply(ph_data[-1], function(y) var(y, na.rm = TRUE))
+skews <- sapply(ph_data[-1], function(y) skewness(as.numeric(y), na.rm = TRUE))
+cors <- as.vector(cor(ph_data$PH, ph_data[,2:ncol(ph_data)], use = "complete.obs"))
+NAs <- sapply(ph_data[-1], function(y) sum(length(which(is.na(y)))))
+
+soda_summary <- data.frame(means, medians, IQRs, vars, skews, cors, NAs)
+colnames(soda_summary) <- c("MEAN", "MEDIAN", "IQR", "Var", "SKEW", "$r_{PH}$", "NAs")
+soda_summary <- round(soda_summary, 2)
+
+pander(soda_summary)
+```  
+
+## Missing Values  
+
+As shown in the above summary, there are missing values across the variables -- the frequency and pattern of these missing values are presented below:  
+
 ```{r missing-pattern}
 library(VIM)
+
 aggr(ph_data, sortVars = TRUE, bar = FALSE, prop = FALSE, gap = 1, cex.axis = 0.7,
      col = c("navyblue", "yellow"), ylab = c("Number Missing", "Pattern"))
-```
+```  
 
-The variable `MFR` has over 200 missing values, and the variable `Brand.Code` is missing 120 values.  Due to these high proportions of missingness, observations missing these variables are dropped:
+The variable `MFR` has over 200 missing values, and the variable `Brand.Code` is missing 120 values.  Due to these high proportions of missingness, observations missing these variables are dropped:  
+
 ```{r drop-na}
 library(plyr) # loaded for later dependecies to avoid conflicts with dplyr
 library(tidyverse)
+
 ph_data <- drop_na(ph_data, MFR, Brand.Code)
-```
+```  
 
+Numeric variables are plotted below to determine the best method of imputation:  
 
-Numeric variables are plotted below to determine the best method of imputation:
 ```{r var-hist}
 theme_set(theme_light())
+
 # histograms
+
 ph_data %>% 
   select(-Brand.Code) %>% 
   gather(Variable, Values) %>% 
   ggplot(aes(x = Values)) +
   geom_histogram(alpha = 0.25, col = "black", bins = 20) +
   facet_wrap(~ Variable, scales = "free", nrow = 4)
-# boxplot
+```  
+
+Many of the variables have normal or somewhat-normal distributions, and appear to be continuous variables. Many of the variables show varying levels of skewness, and a few of the skewed distributions follow an almost chi-squared or log-normal distribution. These are predictors (`PSC.Distribution` and `PSC.C02.Distribution`) where transformations should be considered. 
+
+Another insteresting pattern are the number of 0 values in the `Hyd.Pressure`(1-3) variables.  The $4^{th}$ `Hyd.Pressure` does not follow this same pattern, so depending on the relationship between these variables and the target and/or other variables, they may be removed outright.  
+
+Some of the predictors appear to be discrete, rather than continuous distributions (`Pressure.Setpoint`, `Alch.Rel`), however, many of these variables are just constrained to a few values, but are still continuous.  Out of all the variables, `Bowl.Setpoint` does seem to be a discrete distribution. A table of all values in the variable is below:    
+
+```{r bwl_stpt_vals}
+table(ph_data$Bowl.Setpoint)
+```  
+
+```{r bowl_setpt_dist}
+# histogram may be redundant
+ph_data %>% 
+  select(Bowl.Setpoint) %>% 
+  gather(Variable, Values) %>% 
+  ggplot(aes(x = Values)) +
+  geom_histogram(alpha = 0.25, col = "black", bins = 20) +
+  facet_wrap(~ Variable, scales = "free", nrow = 4)
+```  
+
+Boxplots provide an alternate view that allows the spread of the data to be viewed a little more clearly, as well as the presence of outliers and their quantities:  
+
+```{r}
+# boxplots
+
 ph_data %>% 
   select(-Brand.Code) %>% 
   gather(Variable, Values) %>% 
   ggplot(aes(x = 1, y = Values)) +
   geom_boxplot() +
   facet_wrap(~ Variable, scales = "free", nrow = 4)
+```  
 
-```
+A number of these variables are so highly skewed, such as `Filler.Speed`, `Oxygen.Filler`, `MFR`, and `Air.Pressurer`, that many of the observations for that predictor are recognized as outliers. This suggests that imputing with the mean will not be accurate; an alternate method should be investigated.  
 
-A number of these variables, especially `Filler.Speed` and `MFR`, exhibit a good deal of skewness.  This suggests that imputing with the mean will not be accurate; an alternate method should be investigated.
+Before moving on to correlations between predictors, the relationship between the target variable `PH` and the other predictors is visualized using scatterplots:  
 
+```{r scat_plts}
+# boxplots
 
-## Correlation
-The correlation between the variables is investigated:
+ph_data %>% 
+  gather(-PH, -Brand.Code, key="Var", value="Value") %>% 
+  ggplot(aes(x=Value, y=PH, color=Brand.Code)) + geom_point(alpha=0.6) +
+  facet_wrap(~ Var, scales = "free", nrow=4)
+```  
+
+Here we see there are no strong patterns (i.e. no defined linear pattern), but there are some relationships between `PH` and the other variables that may be more helpful in predicting the `PH` level of the soft drink.  Predictors like `Alch.Rel`, `Density`, and `Temperature` all appear to have a stronger relationshp with `PH` - this makes sense, as these variables have more to do with the make-up of the beverage itself, rather than the filling/bottling process.  
+
+Also interesting is the clustering of the `Brand.Code` within the plots. As correlations are investigated, this predictor does not have a strong relationship with the target, but combined with other predictors, may be more telling.  
+
+## Correlation  
+
+The correlation between the variables is investigated:  
+
 ```{r cor}
 ph_cors <- cor(ph_data %>% select(-Brand.Code), use="complete.obs")
 library(corrplot)
 corrplot(as.matrix(ph_cors), method = "color", tl.cex = 0.5, tl.col = "black")
-```
+```  
 
 As the columns are organized in the data, some interesting patterns are present in the correlogram. Two areas show distinct positive correlations -- these are the predictors that have something to do with carbonation, and another area where different pressure levels correlate with each other. Another set of variables are negatively correlated with these pressure predictors, these have to do with the filling of the bottles, so this makes sense (`Oxygen.Filler`, `Bowl.Setpoint`, `Pressure.Setpoint`).
 
-Some of these same predictors are also correlated well with the target PH variable:
+Some of these same predictors are also correlated well with the target PH variable. The top positive correlations are below:  
+
 ```{r top-ph-cors}
 library(pander)
-ph_cors %>% 
+top_ph_cors <- ph_cors %>% 
   as.data.frame() %>% 
   select(Correlation = PH) %>% 
   rownames_to_column("Variable") %>% 
-  arrange(desc(Correlation)) %>% 
+  arrange(desc(Correlation))
+
+top_ph_cors %>%
   top_n(11, Correlation) %>% 
   pander()
-```
+```  
 
-Three similarly-names variables, `Hyd.Pressure1`, `Hyd.Pressure2`, and `Hyd.Pressure3`show large spikes at values of 0 in the histograms above, and show high correlations.  This suggests that these variables are candidates for removal.  These variables, along with a fourth related variable `Hyd.Pressure4`, are first investigated across the four `Brand.Code` values:
+The predictors with the highest negative correlation to `PH` are as follows:  
+
+```{r}
+top_ph_cors %>%
+  top_n(-11, Correlation) %>%
+  arrange(Correlation) %>%
+  pander()
+```  
+
+###Intercorrelated Predictors  
+
+In addition, some of the variables are highly correlated with each other. The following pairings seem to have something to do with each other in the bottle filling process:  
+
+```{r inter_corr}
+library(reshape2)
+ph_cors_tri <- ph_cors
+
+ph_cors_tri[lower.tri(ph_cors_tri, diag = TRUE)] <- NA  # prevent duplicates by taking upper triangle of matrix
+
+ph_cors_tri %>% 
+  melt() %>%
+  as.data.frame() %>%
+  filter(!is.na(value)) %>%
+  arrange(desc(value)) %>%
+  top_n(10) %>%
+  pander()
+```  
+
+Among the variables with postive correlations with each other, many of them are almost perfectly correlated with one another. We may want to consider removing some of these redundant variables, perhaps the ones that are less correlated to the target variable.  In addition predictors with high negative correlations with each other are below:  
+
+```{r int_cor_neg}
+ph_cors_tri %>% 
+  melt() %>%
+  as.data.frame() %>%
+  filter(!is.na(value)) %>%
+  arrange(value) %>%
+  top_n(-10) %>%
+  pander()
+```  
+
+Three similarly-names variables, `Hyd.Pressure1`, `Hyd.Pressure2`, and `Hyd.Pressure3`show large spikes at values of 0 in the histograms above, and show high correlations.  This suggests that these variables are candidates for removal.  These variables, along with a fourth related variable `Hyd.Pressure4`, are first investigated across the four `Brand.Code` values:  
 
 ```{r pressure-brand}
+
 ph_data %>% 
   select(Brand.Code, Hyd.Pressure1:Hyd.Pressure4) %>% 
   gather(HydNum, Value, -Brand.Code) %>% 
@@ -108,13 +238,13 @@ ph_data %>%
   scale_x_continuous(NULL, NULL, NULL) +
   scale_y_continuous(NULL, NULL, NULL) +
   ggtitle("Distribution of Hyd.Pressure variables across Brand.Codes")
-```
+```  
 
-These distributions suggest that there is no behavior in `Hyd.Pressure1`, `Hyd.Pressure2`, or `Hyd.Pressure3` indicated by `Brand.Code`.  For this reason, these three variables are dropped.  `Hyd.Pressure4` is retained, as there appear to be differences in its behavior across `Brand.Code`:
+These distributions suggest that there is no behavior in `Hyd.Pressure1`, `Hyd.Pressure2`, or `Hyd.Pressure3` indicated by `Brand.Code`.  For this reason, these three variables are dropped.  `Hyd.Pressure4` is retained, as there appear to be differences in its behavior across `Brand.Code`:  
 
 ```{r drop-pressure}
 ph_data <- ph_data %>% select(-(Hyd.Pressure1:Hyd.Pressure3))
-```
+```  
 
 
 # Data Preprocessing
