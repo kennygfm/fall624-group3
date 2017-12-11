@@ -92,7 +92,7 @@ ph_data %>%
 
 Many of the variables have normal or somewhat-normal distributions, and appear to be continuous variables. Many of the variables show varying levels of skewness, and a few of the skewed distributions follow an almost chi-squared or log-normal distribution. These are predictors (`PSC.Distribution` and `PSC.C02.Distribution`) where transformations should be considered. 
 
-Another insteresting pattern are the number of 0 values in the `Hyd.Pressure`(1-3) variables.  The $4^{th}$ `Hyd.Pressure` does not follow this same pattern, so depending on the relationship between these variables and the target and/or other variables, they may be removed outright.  
+Another interesting pattern are the number of 0 values in the `Hyd.Pressure`(1-3) variables.  The $4^{th}$ `Hyd.Pressure` does not follow this same pattern, so depending on the relationship between these variables and the target and/or other variables, they may be removed outright.  
 
 Some of the predictors appear to be discrete, rather than continuous distributions (`Pressure.Setpoint`, `Alch.Rel`), however, many of these variables are just constrained to a few values, but are still continuous.  Out of all the variables, `Bowl.Setpoint` does seem to be a discrete distribution. A table of all values in the variable is below:    
 
@@ -132,7 +132,7 @@ ph_data %>%
   facet_wrap(~ Var, scales = "free", nrow=4)
 ```  
 
-Here we see there are no strong patterns (i.e. no defined linear pattern), but there are some relationships between `PH` and the other variables that may be more helpful in predicting the `PH` level of the soft drink.  Predictors like `Alch.Rel`, `Density`, and `Temperature` all appear to have a stronger relationshp with `PH` - this makes sense, as these variables have more to do with the make-up of the beverage itself, rather than the filling/bottling process.  
+Here we see there are no strong patterns (i.e. no defined linear pattern), but there are some relationships between `PH` and the other variables that may be more helpful in predicting the `PH` level of the soft drink.  Predictors like `Alch.Rel`, `Density`, and `Temperature` all appear to have a stronger relationship with `PH` - this makes sense, as these variables have more to do with the make-up of the beverage itself, rather than the filling/bottling process.  
 
 Also interesting is the clustering of the `Brand.Code` within the plots. As correlations are investigated, this predictor does not have a strong relationship with the target, but combined with other predictors, may be more telling.  
 
@@ -189,7 +189,7 @@ ph_cors_tri %>%
   pander()
 ```  
 
-Among the variables with postive correlations with each other, many of them are almost perfectly correlated with one another. We may want to consider removing some of these redundant variables, perhaps the ones that are less correlated to the target variable.  In addition predictors with high negative correlations with each other are below:  
+Among the variables with positive correlations with each other, many of them are almost perfectly correlated with one another. We may want to consider removing some of these redundant variables, perhaps the ones that are less correlated to the target variable.  In addition predictors with high negative correlations with each other are below:  
 
 ```{r int_cor_neg}
 ph_cors_tri %>% 
@@ -247,7 +247,7 @@ ph_pred <- predict(ph_preproc, ph_pred)
 
 
 ## Partitioning
-With pre-precessing complete, both predictor and response data are partitioned into a training and testing set:
+With pre-processing complete, both predictor and response data are partitioned into a training and testing set:
 ```{r train-test}
 # get rows for training subsets
 set.seed(100)  # for replicability
@@ -273,10 +273,7 @@ ph_pred_test_num <- mutate(ph_pred_test, Brand.Code = as.numeric(as.factor(Brand
 The pre-processed data is used to fit an array of models: linear models; non-linear models; and tree based models
 
 ## Linear Models
-```{r eval=FALSE}
-#Libraries used:
-library(leaps)
-```
+
 
 ### Simple Linear Model
 ```{r lm}
@@ -350,9 +347,9 @@ Following linear modeling, five models are created to investigate performance ba
 library(earth)
 # create model
 set.seed(100)
-marsFit <- earth(x = ph_pred_train, y = ph_resp_train)
+marsTune <- earth(x = ph_pred_train, y = ph_resp_train)
 # predict & get performance
-marsPred <- predict(marsFit, newdata = ph_pred_test)
+marsPred <- predict(marsTune, newdata = ph_pred_test)
 marsPerf <- postResample(pred = marsPred, obs = ph_resp_test)
 ```
 
@@ -411,16 +408,16 @@ svmLinearPerf <- postResample(pred = svmLinearPred, obs = ph_resp_test)
 ### K Nearest Neighbors Model
 ```{r knn}
 set.seed(100)
-knnModel <- train(x = ph_pred_train_num, y = ph_resp_train, method = "knn", 
-                  tuneLength = 10)
+knnTune <- train(x = ph_pred_train_num, y = ph_resp_train, method = "knn", 
+                 tuneLength = 10)
 
-knnPred <- predict(knnModel, newdata = ph_pred_test_num) 
+knnPred <- predict(knnTune, newdata = ph_pred_test_num) 
 knnPerf <- postResample(pred = knnPred, obs = ph_resp_test)
 ```
 
 
 ## Tree-Based Models
-For this project we will see the constraints we encountered with our missing variables and the multiple regression. In the real world, the best model can be only as good as the variables measured by the study. We should also keep in mind that P-values can change based on the specific terms in the model. We can also appreciate that Stepwise regression and best subsets regression are great tools and can get you close to the correct model. However, studies have found that they generally don't pick the correct model. With all these complications we agreed that tree-based methods are simple and useful for interpretation, but also Combining many trees can often result in dramatic improvements in prediction accuracy, at the expense of some lost interpretability.  For this project we use 6 models below.
+For this project we will see the constraints we encountered with our missing variables and the multiple regression. In the real world, the best model can be only as good as the variables measured by the study. We should also keep in mind that P-values can change based on the specific terms in the model. We can also appreciate that stepwise regression and best subsets regression are great tools and can get you close to the correct model. However, studies have found that they generally don't pick the correct model. With all these complications we agreed that tree-based methods are simple and useful for interpretation, but also Combining many trees can often result in dramatic improvements in prediction accuracy, at the expense of some lost interpretability.  For this project we use 6 models below.
 
 For consistency, the same training controls are used for all tree-based models:
 ```{r train-control}
@@ -499,30 +496,90 @@ cubistPerf <- postResample(pred = cubistPred, obs = ph_resp_test)
 # Model Selection & Prediction
 ## Model Performance Comparison
 The resampled RMSE & test set prediction RMSE is shown below for each of the models created:
-```{r compare}
+```{r rmse-perf}
 # function to extract & present model performance
 model_perf <- function (model_set, metric = "RMSE") {
   mdl_names <- character()
-  resampled <- numeric()
-  test <- numeric()
+  Resampled <- numeric()
+  Test <- numeric()
   for (mdl in model_set) {
     mdl_names <- c(mdl_names, mdl)
-    resampled <- c(resampled, min(get(paste0(mdl, "Tune"))$results[[metric]]))
-    test <- c(test, get(paste0(mdl, "perf"))[metric])
+    Resampled <- c(Resampled, min(get(paste0(mdl, "Tune"))$results[[metric]]))
+    Test <- c(Test, get(paste0(mdl, "Perf"))[metric])
   }
-  pander(data.frame(`Resampled RMSE` = resampled, `Test RMSE` = test,
-                    row.names = mdl_names, check.names = FALSE), digits = 4)
+  pander(data.frame(Resampled, Test, row.names = mdl_names),
+         digits = 4, caption = paste(metric, "performance for selected models"))
 }
 # present performance for 15 models created
 model_perf(c("lm", "glm", "pcr", "step",
              "mars", "nnet", "svmRadial", "svmLinear", "knn",
-             "rpart", "rule", "bag", "rf", "boost", "cubist"))
+             "rpart", "rule", "bag", "boost", "cubist"))
 ```
 
+Noting that the models trained using functions other than `caret::train` do not return a resampled RMSE, the best model based on both resampled & test RMSE is the **Cubist model**.  To avoid any bias from looking only at a single metric, the r-squared is also investigated:
 
-## Predictor Importance
-ONCE WE PICK A MODEL
+```{r rsquared-perf}
+model_perf(c("lm", "glm", "pcr", "step",
+             "mars", "nnet", "svmRadial", "svmLinear", "knn",
+             "rpart", "rule", "bag", "boost", "cubist"),
+           metric = "Rsquared")
+```
+
+The Cubist model also performs best as judged by the r-squared, and will be used for prediction.
+
+## Model Investigation
+The performance profile of the selected Cubist across different tuning parameters is shown below:
+```{r plot-cubist}
+plot(cubistTune, main = "Performance profile of Cubist model")
+```
+
+For this model, the optimal RMSE of `r round(min(cubistTune$results$RMSE), 4)` is obtained for the model with 5 neighbors & 20 committees.  The 10 most important variables used in this final model are presented below:
+
+```{r cubist-imp}
+cubistImp <- varImp(cubistTune)
+ggplot(cubistImp, top = 10) + ggtitle("Importance of top 10 predictors for cubist model")
+```
+
+The model is dominated by `Brand.Code`, with `Mnf.Flow`, `Density`, `Pressure.Vacuum`, and `Oxygen.Filler` registering as the next-most-important variables.  The relationships between `Brand.Code` and the two most important numeric variables, `Mnf.Flow` and `Density`, with `PH` are presented below:
+```{r plot-cubist-imp-rel}
+data.frame(ph_pred, ph_resp) %>% 
+  select(PH, Brand.Code, Mnf.Flow, Density) %>% 
+  gather(Variable, Value, -c(PH, Brand.Code)) %>% 
+  ggplot(aes(x = Value, y = PH, col = Brand.Code)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(~ Variable, scales = "free_x") +
+  theme(legend.position = "bottom") +
+  labs(title = "Relationship of important variables to PH", x = NULL)
+```
+
+There is not an immediately apparent relationship between `Mnf.flow` and `PH` nor `Brand.Code`, but the relationship between `Density` and `Brand.Code` shows fairly clear clustering behavior.  Within each cluster, there appears to be a weakly positive relationship with `PH`.
 
 
 ## Prediction of Additional Data
-ONCE WE PICK A MODEL
+The Cubist model is finally used to predict additional data not part of the training or test set.
+```{r eval-data}
+# read in data
+new_data <- read.csv("StudentEvaluation.csv", na.strings = c("", " "), stringsAsFactors = FALSE)
+```
+
+The new data is transformed in the same way as the original data:
+```{r trans-new}
+# remove ph to get only predictors
+new_pred <- new_data %>% select(-PH)
+# remove Hyd.Pressure1, Hyd.Pressure2, & Hyd.Pressure3
+new_pred <- new_pred %>% select(-(Hyd.Pressure1:Hyd.Pressure3))
+# perform transformations used for original data
+new_pred <- predict(ph_preproc, new_pred)
+# convert Brand.Code to numeric
+new_pred <- mutate(new_pred, Brand.Code = as.numeric(as.factor(Brand.Code)))
+```
+
+Finally, the response is predicted and output:
+```{r predict-eval}
+# predict
+new_resp <- predict(cubistTune, new_pred)
+# write predictors & response to csv
+data.frame(new_data, PH = new_resp) %>% 
+  write_csv("Team3_Project2_Fall624.csv")
+```
+
