@@ -490,10 +490,9 @@ library(RWeka)
 ph_pred_train_num <- ph_pred_train %>% 
   mutate(Brand.Code = as.numeric(as.factor(Brand.Code)))
 set.seed(100)
-ruleTune <- train(x = ph_pred_train_num, y = ph_resp_train$PH,
-                  method = "M5Rules", trControl = mdl_ctrl)
+ruleTune <- M5Rules(PH ~ ., data = mutate(ph_pred_train_num, PH = ph_resp_train$PH))
 rulePred <- predict(ruleTune, newdata = ph_pred_test)
-rulePerf <- postResample(pred = rulePred, obs = ph_resp_test)
+rulePerf <- postResample(pred = rulePred, obs = ph_resp_test$PH)
 ```
 
 
@@ -531,7 +530,6 @@ boostPerf <- postResample(pred = boostPred, obs = ph_resp_test$PH)
 
 
 ### Cubist Model
-THIS STILL DOESN'T WORK
 ```{r cubist}
 library(Cubist)
 set.seed(100)
