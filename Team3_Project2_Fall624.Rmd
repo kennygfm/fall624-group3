@@ -521,7 +521,7 @@ Noting that the models trained using functions other than `caret::train` do not 
 ```{r rsquared-perf}
 model_perf(c("lm", "glm", "pcr", "step",
              "mars", "nnet", "svmRadial", "svmLinear", "knn",
-             "rpart", "rule", "bag", "boost", "cubist"),
+             "rpart", "rule", "bag", "rf", "boost", "cubist"),
            metric = "Rsquared")
 ```
 
