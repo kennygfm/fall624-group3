@@ -15,47 +15,32 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
 ```  
 
 # Data Exploration  
-
-```{r load-data, eval=FALSE, echo=FALSE}
-# read in data
-library(readxl)
-
-ph_data <- read_excel("StudentData.xlsx")
-```  
-
 ```{r load-data-github, eval=FALSE}
-# use if we want to load data from GitHub
-
 # open file
 path <- ("https://raw.githubusercontent.com/kennygfm/fall624-group3/master/StudentData.csv")
 con <- file(path, open="r")
 
 # "Student" soft drink data
-ph_data <- read.csv(con, header=T, sep=",", stringsAsFactors = F)
+ph_data <- read.csv(con, na.strings = c("", " "), stringsAsFactors = FALSE)
 
 # close file
 close(con)
 
-ph_data[ , c(16,18,21,28)] <- sapply(ph_data[, c(16,18,21,28)], as.numeric)  # get rid of pesky integer values
+# convert values read as integers to numeric
+ph_data[, c(16, 18, 21, 28)] <- sapply(ph_data[, c(16, 18, 21, 28)], as.numeric)
 ```  
 
-The names in the source file contain spaces; these are replaced with periods to make data manipulation simpler.  The structure of the data is presented below:  
+The structure of the data is presented below:  
 
-```{r rename-str}
-library(stringr)
-
-names(ph_data) <- str_replace_all(names(ph_data), " ", ".")
+```{r str}
 str(ph_data)
 ```  
 
 The data contains 2571 observations across 33 variables.  The first variable, `Brand.Code`, is a character; the remaining 32 variables are numeric.  Summary statistics of the variables are presented below:  
 
-```{r summary} 
-# summary(ph_data)  # use this or the summary table below?
-```  
-
 ```{r summary_table}
 library(e1071)
+library(pander)
 
 means <- sapply(ph_data[-1], function(y) mean(y, na.rm = TRUE))
 medians <- sapply(ph_data[-1], function(y) median(y, na.rm = TRUE))
@@ -97,8 +82,6 @@ Numeric variables are plotted below to determine the best method of imputation:
 ```{r var-hist}
 theme_set(theme_light())
 
-# histograms
-
 ph_data %>% 
   select(-Brand.Code) %>% 
   gather(Variable, Values) %>% 
@@ -114,11 +97,10 @@ Another insteresting pattern are the number of 0 values in the `Hyd.Pressure`(1-
 Some of the predictors appear to be discrete, rather than continuous distributions (`Pressure.Setpoint`, `Alch.Rel`), however, many of these variables are just constrained to a few values, but are still continuous.  Out of all the variables, `Bowl.Setpoint` does seem to be a discrete distribution. A table of all values in the variable is below:    
 
 ```{r bwl_stpt_vals}
-table(ph_data$Bowl.Setpoint)
+pander(table(ph_data$Bowl.Setpoint))
 ```  
 
 ```{r bowl_setpt_dist}
-# histogram may be redundant
 ph_data %>% 
   select(Bowl.Setpoint) %>% 
   gather(Variable, Values) %>% 
@@ -129,9 +111,7 @@ ph_data %>%
 
 Boxplots provide an alternate view that allows the spread of the data to be viewed a little more clearly, as well as the presence of outliers and their quantities:  
 
-```{r}
-# boxplots
-
+```{r boxplots}
 ph_data %>% 
   select(-Brand.Code) %>% 
   gather(Variable, Values) %>% 
@@ -145,11 +125,10 @@ A number of these variables are so highly skewed, such as `Filler.Speed`, `Oxyge
 Before moving on to correlations between predictors, the relationship between the target variable `PH` and the other predictors is visualized using scatterplots:  
 
 ```{r scat_plts}
-# boxplots
-
 ph_data %>% 
   gather(-PH, -Brand.Code, key="Var", value="Value") %>% 
-  ggplot(aes(x=Value, y=PH, color=Brand.Code)) + geom_point(alpha=0.6) +
+  ggplot(aes(x=Value, y=PH, color=Brand.Code)) +
+  geom_point(alpha=0.6) +
   facet_wrap(~ Var, scales = "free", nrow=4)
 ```  
 
@@ -172,7 +151,6 @@ As the columns are organized in the data, some interesting patterns are present 
 Some of these same predictors are also correlated well with the target PH variable. The top positive correlations are below:  
 
 ```{r top-ph-cors}
-library(pander)
 top_ph_cors <- ph_cors %>% 
   as.data.frame() %>% 
   select(Correlation = PH) %>% 
@@ -185,10 +163,9 @@ top_ph_cors %>%
 ```  
 
 The predictors with the highest negative correlation to `PH` are as follows:  
-
-```{r}
+```{r top-neg-ph-cors}
 top_ph_cors %>%
-  top_n(-11, Correlation) %>%
+  top_n(-10, Correlation) %>%
   arrange(Correlation) %>%
   pander()
 ```  
@@ -224,10 +201,10 @@ ph_cors_tri %>%
   pander()
 ```  
 
+## Variable Removal
 Three similarly-names variables, `Hyd.Pressure1`, `Hyd.Pressure2`, and `Hyd.Pressure3`show large spikes at values of 0 in the histograms above, and show high correlations.  This suggests that these variables are candidates for removal.  These variables, along with a fourth related variable `Hyd.Pressure4`, are first investigated across the four `Brand.Code` values:  
 
 ```{r pressure-brand}
-
 ph_data %>% 
   select(Brand.Code, Hyd.Pressure1:Hyd.Pressure4) %>% 
   gather(HydNum, Value, -Brand.Code) %>% 
@@ -283,6 +260,13 @@ ph_pred_test <- ph_pred[-train_rows, ]
 ph_resp_test <- ph_resp[-train_rows, ]
 ```
 
+For some models used, the character predictor `Brand.Code` needs to be numeric.  Additional data frames (for training & testing) are created with this variable converted:
+```{r numeric-df}
+ph_pred_train_num <- mutate(ph_pred_train, Brand.Code = as.numeric(as.factor(Brand.Code)))
+ph_pred_test_num <- mutate(ph_pred_test, Brand.Code = as.numeric(as.factor(Brand.Code)))
+```
+
+
 
 
 # Model Creation
@@ -291,95 +275,83 @@ The pre-processed data is used to fit an array of models: linear models; non-lin
 ## Linear Models
 ```{r eval=FALSE}
 #Libraries used:
-library(pls)
 library(leaps)
 ```
 
-```{r eval=FALSE}
-##Numeric Brand.Code for training
-bc <- ph_pred_train$Brand.Code
-bc <- as.character(bc)
-bc[bc=='A'] <-1
-bc[bc=='B'] <-2
-bc[bc=='C'] <-3
-bc[bc=='D'] <-4
-bc <- as.numeric(bc)
-ph_pred_train_lm <- ph_pred_train
-ph_pred_train_lm$Brand.Code <- bc
+### Simple Linear Model
+```{r lm}
+# create single df for fomula based model
+regressData <- data.frame(ph_pred_train_num, PH = ph_resp_train, stringsAsFactors = FALSE)
+# train model
+lmTune <- train(PH ~ ., data = regressData, method = "lm")
+# get predictions for test set
+lmPred <- predict(lmTune, newdata = ph_pred_test_num)
+# evaluate performance of test set
+lmPerf <- postResample(pred = lmPred, obs = ph_resp_test)
+```
+
+### Generalized Linear Model
+```{r glm}
+# fit model
+glmTune <- glm(PH ~ ., data = regressData, family = "quasipoisson")  
+# get predictions & performance
+glmPred <- predict(glmTune, newdata = ph_pred_test_num)
+glmPerf <- postResample(pred = glmPred, obs = ph_resp_test)
+```
 
 
-## Change Brand.Code for test set
-
-ph_pred_test_lm <- ph_pred_test
-ph_pred_test_lm$Brand.Code <- as.character(ph_pred_test_lm$Brand.Code)
-ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='A'] <-1
-ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='B'] <-2
-ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='C'] <-3
-ph_pred_test_lm$Brand.Code[ph_pred_test_lm$Brand.Code=='D'] <-4
-ph_pred_test_lm$Brand.Code <- as.numeric(ph_pred_test_lm$Brand.Code)
-
-
-
-regressData <- data.frame(ph_pred_train_lm,ph_resp_train, stringsAsFactors = FALSE)
-lmTune<-train(PH ~., data = regressData, method = "lm")
-summary(lmTune) # The R Squared was only .37 
-lmPred <- predict(lmTune, newdata = ph_pred_test_lm)
-lmPerf <- postResample(pred = lmPred, obs = unlist(ph_resp_test) )
-
-
-################# GLM Regression ######
-glmTune<-glm(PH ~., data=regressData, family="quasipoisson")  
-summary(glmTune) # 
-glmPred <- predict(glmTune, newdata = ph_pred_test_lm)
-glmPerf <- postResample(pred = glmPred, obs = unlist(ph_resp_test) )
-# Then best glm family tested was gaussian 
-
-
-################# Principal Components Regression ######
+### Principal Components Regression Model
+```{r pcm-tune}
+library(pls)
+# tune model
 pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
-summary(pcrTune)
+```
 
-##Plot of the regression of vs number of components used
-
-validationplot(pcrTune, val.type="RMSE")
-
-##Plot of R^2 vs number of components used
-
+The performance of the PCR model is investigated across the number of components:
+```{r pcm-perf}
+par(mfrow = c(1, 2))
+validationplot(pcrTune, val.type = "RMSE")
 validationplot(pcrTune, val.type = "R2")
+```
 
-# When doing prc it is important to keep in mind that the main goal is to see  a low cross validation error with a lower number of components than the number of variables in your dataset. In these results, it is clear that the number of components are too high for easy interpretation, resulting in no dimensionality reduction. 
+When doing PRC modeling, it is important to keep in mind that the main goal is to see a low cross validation error with a lower number of components than the number of variables in the dataset. In these results, it is clear that the number of components are too high for easy interpretation, resulting in no dimensionality reduction. Based on this, 18 principal components are used for prediction.
 
-# Then we choose 18 Principal Components
-pcrPred <- predict(pcrTune, newdata = ph_pred_test_lm, ncomp=18)
+```{r pcm-pred}
+# predict & get performance
+pcrPred <- predict(pcrTune, newdata = ph_pred_test_num, ncomp=18)
 pcrPerf <- postResample(pred = pcrPred, obs = unlist(ph_resp_test) )
-# There are too many principal components in this model - making it difficult to interpret which each component represents.
+```
 
-################# Stepwise Backwards Linear Regression ######
-# The full linear regression had some variables with high p values
-# No variables
-null <-  lm(PH ~1, data = regressData)
 
-# All variables
-full <- lm(PH ~., data = regressData)
+### Stepwise Backwards Linear Regression Model
+The PCM model has too many principal components in this model to be easily interpretable.  As an alternate, stepwise backwards linear regression is conducted:
 
-stepTune <- step(full, data=regressData, direction="backward")
-summary(stepTune)
-# The variables chosen for inclusion were 
-# Brand.Code , Fill.Ounces, PSC.Fill, Mnf.Flow, Carb.Pressure1, Hyd.Pressure4, Filler.Level, Temperature, Usage.cont, Carb.Flow          
-# Density, MFR, Pressure.Vacuum, Oxygen.Filler, Pressure.Setpoint, Carb.Rel 
-stepPred <- predict(stepTune, newdata = ph_pred_test_lm)
-stepPerf <- postResample(pred = stepPred, obs = unlist(ph_resp_test) )
-########################
+```{r step-back}
+# create full model
+full <- lm(PH ~ ., data = regressData)
+# step backwards
+stepTune <- step(full, data = regressData, direction = "backward", trace = FALSE)
+pander(summary(stepTune))
+```
 
+The variables chosen for inclusion were `Brand.Code`, `Fill.Ounces`, `PSC.Fill`, `Mnf.Flow`, `Carb.Pressure1`, `Hyd.Pressure4`, `Filler.Level`, `Temperature`, `Usage.cont`, `Carb.Flow`, `Density`, `MFR`, `Pressure.Vacuum`, `Oxygen.Filler`, `Pressure.Setpoint`, and `Carb.Rel`.
+
+Predictions and performance are calculated from the stepwise model:
+```{r step-pred}
+stepPred <- predict(stepTune, newdata = ph_pred_test_num)
+stepPerf <- postResample(pred = stepPred, obs = ph_resp_test)
 ```
 
 ## Non-Linear Models
+Following linear modeling, five models are created to investigate performance based on non-linear interaction with the response `PH`.
+
 ### MARS Model
 ```{r mars}
-#MARS
 library(earth)
+# create model
+set.seed(100)
 marsFit <- earth(x = ph_pred_train, y = ph_resp_train)
-
+# predict & get performance
 marsPred <- predict(marsFit, newdata = ph_pred_test)
 marsPerf <- postResample(pred = marsPred, obs = ph_resp_test)
 ```
@@ -387,83 +359,62 @@ marsPerf <- postResample(pred = marsPred, obs = ph_resp_test)
 
 ### Neural Network Model
 ```{r nn}
-#Now let's do NN
 library(nnet)
+# tune model across specified measures
 nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),
                         .size = c(1:10),
                         .bag = FALSE)
+
+# train model
 set.seed(100)
 nnetTune <- train(x = ph_pred_train, y = ph_resp_train,
                   method = "avNNet",
                   tuneGrid = nnetGrid,
-                  preProc = c("center", "scale"),
                   linout = TRUE,
                   trace = FALSE,
                   maxit = 50)
+
+
+# predictions & performance
 nnetPred <- predict(nnetTune, newdata = ph_pred_test)
 nnetPerf <- postResample(pred = nnetPred, obs = ph_resp_test) 
 ```
 
 
 ### Support Vector Machine Models
+Support vector machine (SVM) models are created using two kernels: radial and linear.
 ```{r svm}
-#Now let's do SVM
 library(kernlab)
 
-#Note that we have to convert Brand.Code to numeric or remove...
-bc <- ph_pred_train$Brand.Code
-bc <- as.character(bc)
-bc[bc=='A'] <-1
-bc[bc=='B'] <-2
-bc[bc=='C'] <-3
-bc[bc=='D'] <-4
-bc <- as.numeric(bc)
-ph_pred_train_svm <- ph_pred_train
-ph_pred_train_svm$Brand.Code <- bc
-
-#test data BrandCode needs to be updated too
-ph_pred_test_svm <- ph_pred_test
-ph_pred_test_svm$Brand.Code <- as.character(ph_pred_test_svm$Brand.Code)
-ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='A'] <-1
-ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='B'] <-2
-ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='C'] <-3
-ph_pred_test_svm$Brand.Code[ph_pred_test_svm$Brand.Code=='D'] <-4
-ph_pred_test_svm$Brand.Code <- as.numeric(ph_pred_test_svm$Brand.Code)
-
-#Radial first
+#Radial kernel
 set.seed(100)
-svmTune <- train(x = ph_pred_train_svm, y = ph_resp_train,
-                 method = "svmRadial", 
-                 tuneLength = 14,
-                 preProc = c("center", "scale"),
-                 trControl = trainControl(method = "cv"))
+svmRadialTune <- train(x = ph_pred_train_num, y = ph_resp_train,
+                       method = "svmRadial", 
+                       tuneLength = 14,
+                       trControl = trainControl(method = "cv"))
 
-svmRadialPred <- predict(svmTune, newdata = ph_pred_test_svm)
+svmRadialPred <- predict(svmRadialTune, newdata = ph_pred_test_num)
 svmRadialPerf <- postResample(pred = svmRadialPred, obs = ph_resp_test) 
 
-#Linear first
+#Linear kernel
 set.seed(100)
-svmTune <- train(x = ph_pred_train_svm, y = ph_resp_train,
-                 method = "svmLinear", 
-                 tuneLength = 14,
-                 preProc = c("center", "scale"),
-                 trControl = trainControl(method = "cv"))
+svmLinearTune <- train(x = ph_pred_train_num, y = ph_resp_train,
+                       method = "svmLinear", 
+                       tuneLength = 14,
+                       trControl = trainControl(method = "cv"))
 
-svLinearPred <- predict(svmTune, newdata = ph_pred_test_svm)
-svmLinearPerf <- postResample(pred = svLinearPred, obs = ph_resp_test) 
+svmLinearPred <- predict(svmLinearTune, newdata = ph_pred_test_num)
+svmLinearPerf <- postResample(pred = svmLinearPred, obs = ph_resp_test) 
 ```
 
 
 ### K Nearest Neighbors Model
 ```{r knn}
-#KNN 
-library(caret)
 set.seed(100)
-#As with SVM we must use training data that converts Brand.Code to numeric
-knnModel <- train(x = ph_pred_train_svm, y = ph_resp_train, method = "knn", 
+knnModel <- train(x = ph_pred_train_num, y = ph_resp_train, method = "knn", 
                   tuneLength = 10)
-knnModel #max(knnModel$results$Rsquared) 0.2349691
-knnPred <- predict(knnModel, newdata = ph_pred_test_svm) 
+
+knnPred <- predict(knnModel, newdata = ph_pred_test_num) 
 knnPerf <- postResample(pred = knnPred, obs = ph_resp_test)
 ```
 
@@ -482,25 +433,22 @@ mdl_ctrl <- trainControl(method = "cv", number = 15)
 ### Conventional Tree Model
 ```{r tree}
 library(rpart)
-# conventional tree of max depth
+# tree of max depth
 set.seed(100)
-rpartTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+rpartTune <- train(x = ph_pred_train, y = ph_resp_train,
                    method = "rpart2", trControl = mdl_ctrl)
 rpartPred <- predict(rpartTune, newdata = ph_pred_test)
-rpartPerf <- postResample(pred = rpartPred, obs = ph_resp_test$PH)
+rpartPerf <- postResample(pred = rpartPred, obs = ph_resp_test)
 ```
 
 
 ### Rule-Based Model
 ```{r rule-tree}
 library(RWeka)
-# create data frame with brand code as numeric
-ph_pred_train_num <- ph_pred_train %>% 
-  mutate(Brand.Code = as.numeric(as.factor(Brand.Code)))
 set.seed(100)
-ruleTune <- M5Rules(PH ~ ., data = mutate(ph_pred_train_num, PH = ph_resp_train$PH))
+ruleTune <- M5Rules(PH ~ ., data = mutate(ph_pred_train_num, PH = ph_resp_train))
 rulePred <- predict(ruleTune, newdata = ph_pred_test)
-rulePerf <- postResample(pred = rulePred, obs = ph_resp_test$PH)
+rulePerf <- postResample(pred = rulePred, obs = ph_resp_test)
 ```
 
 
@@ -508,10 +456,10 @@ rulePerf <- postResample(pred = rulePred, obs = ph_resp_test$PH)
 ```{r bagged-tree}
 library(ipred)
 set.seed(100)
-bagTune <- train(x = ph_pred_train, y = ph_resp_train$PH,
+bagTune <- train(x = ph_pred_train, y = ph_resp_train,
                  method = "treebag", trControl = mdl_ctrl)
 bagPred <- predict(bagTune, newdata = ph_pred_test)
-bagPerf <- postResample(pred = bagPred, obs = ph_resp_test$PH)
+bagPerf <- postResample(pred = bagPred, obs = ph_resp_test)
 ```
 
 
@@ -519,10 +467,10 @@ bagPerf <- postResample(pred = bagPred, obs = ph_resp_test$PH)
 ```{r rf}
 library(randomForest)
 set.seed(100)
-rfTune <- train(x = ph_pred_train_num, y = ph_resp_train$PH,
+rfTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                 method = "rf", trControl = mdl_ctrl, importance = TRUE)
 rfPred <- predict(rfTune, newdata = ph_pred_test)
-rfPerf <- postResample(pred = rfPred, obs = ph_resp_test$PH)
+rfPerf <- postResample(pred = rfPred, obs = ph_resp_test)
 ```
 
 
@@ -530,10 +478,10 @@ rfPerf <- postResample(pred = rfPred, obs = ph_resp_test$PH)
 ```{r boosted-tree}
 library(gbm)
 set.seed(100)
-boostTune <- train(x = ph_pred_train_num, y = ph_resp_train$PH,
+boostTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                    method = "gbm", trControl = mdl_ctrl, verbose = FALSE)
 boostPred <- predict(boostTune, newdata = ph_pred_test)
-boostPerf <- postResample(pred = boostPred, obs = ph_resp_test$PH)
+boostPerf <- postResample(pred = boostPred, obs = ph_resp_test)
 ```
 
 
@@ -541,18 +489,18 @@ boostPerf <- postResample(pred = boostPred, obs = ph_resp_test$PH)
 ```{r cubist}
 library(Cubist)
 set.seed(100)
-cubistTune <- train(x = ph_pred_train_num, y = ph_resp_train$PH,
+cubistTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                     method = "cubist", trControl = mdl_ctrl)
 cubistPred <- predict(cubistTune, newdata = ph_pred_test)
 cubistPerf <- postResample(pred = cubistPred, obs = ph_resp_test)
-
 ```
 
 
 # Model Selection & Prediction
 ## Model Performance Comparison
-The resampled RMSE & RMSE performance against the test set is shown below for each of the models created:
+The resampled RMSE & test set prediction RMSE is shown below for each of the models created:
 ```{r compare}
+# function to extract & present model performance
 model_perf <- function (model_set, metric = "RMSE") {
   mdl_names <- character()
   resampled <- numeric()
@@ -565,8 +513,10 @@ model_perf <- function (model_set, metric = "RMSE") {
   pander(data.frame(`Resampled RMSE` = resampled, `Test RMSE` = test,
                     row.names = mdl_names, check.names = FALSE), digits = 4)
 }
-
-model_perf(c("rpart", "rule", "bag", "rf", "boost", "cubist"))
+# present performance for 15 models created
+model_perf(c("lm", "glm", "pcr", "step",
+             "mars", "nnet", "svmRadial", "svmLinear", "knn",
+             "rpart", "rule", "bag", "rf", "boost", "cubist"))
 ```
 
 
@@ -574,5 +524,5 @@ model_perf(c("rpart", "rule", "bag", "rf", "boost", "cubist"))
 ONCE WE PICK A MODEL
 
 
-## Prediction of Future Data
+## Prediction of Additional Data
 ONCE WE PICK A MODEL
