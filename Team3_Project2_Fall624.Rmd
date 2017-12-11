@@ -338,8 +338,16 @@ glmPerf <- postResample(pred = glmPred, obs = unlist(ph_resp_test) )
 ################# Principal Components Regression ######
 pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
 summary(pcrTune)
+
+##Plot of the regression of vs number of components used
+
 validationplot(pcrTune, val.type="RMSE")
+
+##Plot of R^2 vs number of components used
+
 validationplot(pcrTune, val.type = "R2")
+
+# When doing prc it is important to keep in mind that the main goal is to see  a low cross validation error with a lower number of components than the number of variables in your dataset. In these results, it is clear that the number of components are too high for easy interpretation, resulting in no dimensionality reduction. 
 
 # Then we choose 18 Principal Components
 pcrPred <- predict(pcrTune, newdata = ph_pred_test_lm, ncomp=18)
