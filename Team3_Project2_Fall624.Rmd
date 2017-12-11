@@ -318,8 +318,8 @@ When doing PRC modeling, it is important to keep in mind that the main goal is t
 
 ```{r pcm-pred}
 # predict & get performance
-pcrPred <- predict(pcrTune, newdata = ph_pred_test_num, ncomp=18)
-pcrPerf <- postResample(pred = pcrPred, obs = unlist(ph_resp_test) )
+pcrPred <- predict(pcrTune, newdata = ph_pred_test_num, ncomp = 18)
+pcrPerf <- postResample(pred = pcrPred, ph_resp_test)
 ```
 
 
@@ -447,7 +447,7 @@ rpartPerf <- postResample(pred = rpartPred, obs = ph_resp_test)
 library(RWeka)
 set.seed(100)
 ruleTune <- M5Rules(PH ~ ., data = mutate(ph_pred_train_num, PH = ph_resp_train))
-rulePred <- predict(ruleTune, newdata = ph_pred_test)
+rulePred <- predict(ruleTune, newdata = ph_pred_test_num)
 rulePerf <- postResample(pred = rulePred, obs = ph_resp_test)
 ```
 
@@ -469,7 +469,7 @@ library(randomForest)
 set.seed(100)
 rfTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                 method = "rf", trControl = mdl_ctrl, importance = TRUE)
-rfPred <- predict(rfTune, newdata = ph_pred_test)
+rfPred <- predict(rfTune, newdata = ph_pred_test_num)
 rfPerf <- postResample(pred = rfPred, obs = ph_resp_test)
 ```
 
@@ -480,7 +480,7 @@ library(gbm)
 set.seed(100)
 boostTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                    method = "gbm", trControl = mdl_ctrl, verbose = FALSE)
-boostPred <- predict(boostTune, newdata = ph_pred_test)
+boostPred <- predict(boostTune, newdata = ph_pred_test_num)
 boostPerf <- postResample(pred = boostPred, obs = ph_resp_test)
 ```
 
@@ -491,7 +491,7 @@ library(Cubist)
 set.seed(100)
 cubistTune <- train(x = ph_pred_train_num, y = ph_resp_train,
                     method = "cubist", trControl = mdl_ctrl)
-cubistPred <- predict(cubistTune, newdata = ph_pred_test)
+cubistPred <- predict(cubistTune, newdata = ph_pred_test_num)
 cubistPerf <- postResample(pred = cubistPred, obs = ph_resp_test)
 ```
 
