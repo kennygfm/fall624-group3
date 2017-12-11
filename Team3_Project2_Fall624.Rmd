@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
 # Data Exploration  
 ```{r load-data-github, eval=FALSE}
 # open file
-path <- ("https://raw.githubusercontent.com/kennygfm/fall624-group3/master/StudentData.csv")
+path <- "https://raw.githubusercontent.com/kennygfm/fall624-group3/master/StudentData.csv"
 con <- file(path, open="r")
 
 # "Student" soft drink data
@@ -276,6 +276,7 @@ The pre-processed data is used to fit an array of models: linear models; non-lin
 
 
 ### Simple Linear Model
+A simple linear model is fit using all of the predictors contained in `ph_pred_train`:
 ```{r lm}
 # create single df for fomula based model
 regressData <- data.frame(ph_pred_train_num, PH = ph_resp_train, stringsAsFactors = FALSE)
@@ -288,6 +289,7 @@ lmPerf <- postResample(pred = lmPred, obs = ph_resp_test)
 ```
 
 ### Generalized Linear Model
+Generalized linear models are extended versions of linear models which use a link function to describe the relation of the mean and the linear predictor, and a variance function. GLM can be used to model other distributions, such as binomial, Poisson, and exponential.
 ```{r glm}
 # fit model
 glmTune <- glm(PH ~ ., data = regressData, family = "quasipoisson")  
@@ -298,10 +300,11 @@ glmPerf <- postResample(pred = glmPred, obs = ph_resp_test)
 
 
 ### Principal Components Regression Model
+A principal components regression model seeks to lower the number of coefficients in a model by creating combinations of the variables that explain significant portions of the variance in the data.  Each of the principal components generated are mutually orthogonal, so there is no risk of autocorrelation between predictors.
 ```{r pcm-tune}
 library(pls)
 # tune model
-pcrTune <- pcr(PH~., data = regressData, scale = TRUE, validation = "CV")
+pcrTune <- pcr(PH ~ ., data = regressData, scale = TRUE, validation = "CV")
 ```
 
 The performance of the PCR model is investigated across the number of components:
@@ -343,6 +346,7 @@ stepPerf <- postResample(pred = stepPred, obs = ph_resp_test)
 Following linear modeling, five models are created to investigate performance based on non-linear interaction with the response `PH`.
 
 ### MARS Model
+*Multivariate adaptive regression splines* are relatively simple to execute as variables are automatically chosen and optimally transformed. 
 ```{r mars}
 library(earth)
 # create model
@@ -355,6 +359,7 @@ marsPerf <- postResample(pred = marsPred, obs = ph_resp_test)
 
 
 ### Neural Network Model
+Quite a few parameters are necessary for tuning a neural network. We proscribed the breadth in order to maintain a tolerable level of processing time. We opted to vary the number of hidden layers, and keep weight decay to three options. While results are impressive, the results of course are difficult to interpret - a byproduct of neural networks in general.
 ```{r nn}
 library(nnet)
 # tune model across specified measures
@@ -379,7 +384,7 @@ nnetPerf <- postResample(pred = nnetPred, obs = ph_resp_test)
 
 
 ### Support Vector Machine Models
-Support vector machine (SVM) models are created using two kernels: radial and linear.
+In this case, we expect SVMs to perform well given that we have far more samples (or observations) relative to the number of predictors. We leverage two models because we cannot assume that the appropriate hyperplane would be linear. Thus, in addition to the "linear" kernel, we leverage "radial" as well. Additional kernels should be leveraged in the future, as choosing the best one is non-trivial.
 ```{r svm}
 library(kernlab)
 
@@ -406,6 +411,7 @@ svmLinearPerf <- postResample(pred = svmLinearPred, obs = ph_resp_test)
 
 
 ### K Nearest Neighbors Model
+An advantage of K-Nearest Neighbors is its ability to handle "noisy" data and the speed with which it learns complex models. However, given the subject matter, we should not expect KNN to perform especially well as its primary use case is applied toward classifications when we know little or nothing about the distribution of data, and that is not the case here.
 ```{r knn}
 set.seed(100)
 knnTune <- train(x = ph_pred_train_num, y = ph_resp_train, method = "knn", 
@@ -428,6 +434,7 @@ mdl_ctrl <- trainControl(method = "cv", number = 15)
 
 
 ### Conventional Tree Model
+Basic regression trees partition the data based on predictors into groups with a relatively homogeneous distribution of the response variable, and predict the mean of the appropriate group for the response.
 ```{r tree}
 library(rpart)
 # tree of max depth
@@ -440,6 +447,7 @@ rpartPerf <- postResample(pred = rpartPred, obs = ph_resp_test)
 
 
 ### Rule-Based Model
+Due to their prediction being based on average, small changes in the data can drastically affect the structure (and therefore predictions) of a simple tree.  An approach that may overcome this is the M5 model tree, which uses a linear regression model to predict the repose at each terminal node.  A rule-based regression tree simplifies this approach by removing redundant rules resulting from splits at different parts of the tree.
 ```{r rule-tree}
 library(RWeka)
 set.seed(100)
@@ -450,6 +458,7 @@ rulePerf <- postResample(pred = rulePred, obs = ph_resp_test)
 
 
 ### Bagged Tree Model
+Bootstrap aggregated (bagged) models use bootstrapped samples of the original data to fit regression models, and use these to construct an ensemble model.  Each model in the ensemble is used to generate a prediction, and the predictions of each model are averaged to give a single prediction for the bagged model.  The ensemble model offers a reduction in variance compared to a single regression model.
 ```{r bagged-tree}
 library(ipred)
 set.seed(100)
@@ -461,6 +470,7 @@ bagPerf <- postResample(pred = bagPred, obs = ph_resp_test)
 
 
 ### Random Forest Model
+While bagging offers a reduction in variance, the trees used are not completely independent of each other, since each tree (and each split of each tree), considers all original predictors.  To de-correlate the trees, random forests select a bootstrapped sample of the data, then randomly select a subset of predictors to partition the trees.  Once these trees have been fit, the predictions of all models in the ensemble are averaged together.
 ```{r rf}
 library(randomForest)
 set.seed(100)
@@ -472,6 +482,7 @@ rfPerf <- postResample(pred = rfPred, obs = ph_resp_test)
 
 
 ### Boosted Tree Model
+Gradient boosted trees function by attempting to reduce the residuals fit by models.  Initially, predictions are simply provided by the mean of the response.  A regression tree is then fit based on the residuals between the actual & predicted response.  This tree is used to predict the residual, and the difference between the previous residual and the predicted residual is added to the previous residual.  This process is repeated for a designated number of iterations, and only the final tree is considered.  This is, however, still an ensemble method, as each model fit is informed by the model before it.
 ```{r boosted-tree}
 library(gbm)
 set.seed(100)
@@ -483,6 +494,7 @@ boostPerf <- postResample(pred = boostPred, obs = ph_resp_test)
 
 
 ### Cubist Model
+Cubist models are an extension of the rule-based model above.  Terminal leaves of trees contain models based on predictors used in previous splits, with intermediate linear models at each step of the tree. Predictions made using terminal leaf's model are "smoothed" by considering predictions from models in previous nodes of the tree. The tree is reduced to a set of rules, which, for simplification, are eliminated via pruning.
 ```{r cubist}
 library(Cubist)
 set.seed(100)
@@ -513,7 +525,7 @@ model_perf <- function (model_set, metric = "RMSE") {
 # present performance for 15 models created
 model_perf(c("lm", "glm", "pcr", "step",
              "mars", "nnet", "svmRadial", "svmLinear", "knn",
-             "rpart", "rule", "bag", "boost", "cubist"))
+             "rpart", "rule", "bag", "rf", "boost", "cubist"))
 ```
 
 Noting that the models trained using functions other than `caret::train` do not return a resampled RMSE, the best model based on both resampled & test RMSE is the **Cubist model**.  To avoid any bias from looking only at a single metric, the r-squared is also investigated:
@@ -525,7 +537,7 @@ model_perf(c("lm", "glm", "pcr", "step",
            metric = "Rsquared")
 ```
 
-The Cubist model also performs best as judged by the r-squared, and will be used for prediction.
+The Cubist model also performs best as judged by the r-squared metric on the test set.  While the random forest model performs slightly better on resampled r-squared, it is not by a significant margin.  The Cubist model will be used for prediction.
 
 ## Model Investigation
 The performance profile of the selected Cubist across different tuning parameters is shown below:
